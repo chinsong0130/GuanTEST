@@ -65,12 +65,22 @@ body {
 
 /* Scanner Page */
 #page-scanner { background: #000; }
-#camera-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+#camera-video { 
+  position: absolute; 
+  inset: 0; 
+  width: 100%; 
+  height: 100%; 
+  object-fit: cover;
+  z-index: 1;
+}
 
 .scan-overlay {
-  position: absolute; inset: 0;
-  display: flex; flex-direction: column;
+  position: absolute; 
+  inset: 0;
+  display: flex; 
+  flex-direction: column;
   pointer-events: none;
+  z-index: 2;
 }
 
 .scan-header {
@@ -140,7 +150,6 @@ body {
   font-size: 16px; font-weight: bold; cursor: pointer;
   transition: transform 0.1s;
 }
-.btn:active { transform: scale(0.98); }
 .btn-primary { background: var(--green); color: #000; }
 .btn-secondary { background: #333; color: #fff; margin-top: 10px; }
 .btn-outline { background: transparent; border: 1px solid var(--green); color: var(--green); margin-top: 10px; padding: 12px; }
@@ -165,15 +174,15 @@ body {
     <button class="btn btn-outline" onclick="handleManualInput()">解析並預覽</button>
   </div>
 
-  <div class="version-tag">v1.0.9</div>
+  <div class="version-tag">v1.1.0</div>
 </div>
 
 <div class="page" id="page-scanner">
-  <video id="camera-video" playsinline muted></video>
+  <video id="camera-video" playsinline muted autoplay></video>
   <div class="scan-overlay">
     <div class="scan-header">
         <div id="user-info" style="font-size: 14px;">載入中...</div>
-        <div class="engine-status" id="engine-status">初始化引擎...</div>
+        <div class="engine-status" id="engine-status">初始化...</div>
     </div>
     <div class="viewfinder">
       <div class="vf-box" id="vf-box"><div class="scan-line"></div></div>
@@ -202,14 +211,12 @@ const LIFF_ID = '2009550177-uiMwrJEn';
 let currentData = null;
 let codeReader = null;
 let isScanning = true;
-let isLiffInited = false;
 let stream = null;
 
 // 1. 初始化 LIFF
 async function initLiff() {
   try {
     await liff.init({ liffId: LIFF_ID });
-    isLiffInited = true;
     if (!liff.isLoggedIn()) {
       liff.login();
     } else {
@@ -217,27 +224,33 @@ async function initLiff() {
       document.getElementById('user-info').innerText = profile.displayName;
       document.getElementById('page-auth').classList.remove('active');
       document.getElementById('page-scanner').classList.add('active');
-      startCamera();
+      // 確保 UI 切換後再啟動相機
+      setTimeout(startCamera, 300);
     }
   } catch (err) {
     console.error('LIFF Init Error:', err);
+    alert('LIFF 初始化失敗: ' + err.message);
   }
 }
 
-// 2. 啟動相機
+// 2. 啟動相機流程強化
 async function startCamera() {
   const video = document.getElementById('camera-video');
   const statusEl = document.getElementById('engine-status');
   
-  // 檢查瀏覽器支援
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    statusEl.innerText = "瀏覽器不支援相機 (需 HTTPS)";
+    statusEl.innerText = "環境不支援相機";
     return;
   }
 
-  // 先要求權限，並取得串流
   try {
-    statusEl.innerText = "要求相機權限...";
+    statusEl.innerText = "正在請求相機...";
+    
+    // 停止舊串流
+    if (stream) {
+      stream.getTracks().forEach(t => t.stop());
+    }
+
     stream = await navigator.mediaDevices.getUserMedia({
       video: {
         facingMode: "environment",
@@ -245,15 +258,32 @@ async function startCamera() {
         height: { ideal: 1080 }
       }
     });
-    video.srcObject = stream;
-    await video.play();
-  } catch (err) {
-    console.error('Permission/Stream Error:', err);
-    statusEl.innerText = "相機啟動失敗 (拒絕或不支援)";
-    return;
-  }
 
-  // 載入 ZXing
+    video.srcObject = stream;
+
+    // 關鍵：等待元數據載入並播放
+    statusEl.innerText = "正在啟動視訊...";
+    await new Promise((resolve) => {
+      video.onloadedmetadata = () => {
+        video.play().then(resolve);
+      };
+    });
+
+    statusEl.innerText = "視訊已就緒";
+    initZXing();
+
+  } catch (err) {
+    console.error('Camera Access Error:', err);
+    statusEl.innerText = "權限遭拒或相機故障";
+    alert('無法開啟相機: ' + err.name);
+  }
+}
+
+// 3. 初始化解碼引擎
+async function initZXing() {
+  const statusEl = document.getElementById('engine-status');
+  const video = document.getElementById('camera-video');
+
   if (!window.ZXingBrowser) {
     statusEl.innerText = "載入解碼庫...";
     await new Promise((resolve, reject) => {
@@ -265,29 +295,29 @@ async function startCamera() {
     });
   }
 
-  statusEl.innerText = "GS1 引擎運行中";
+  statusEl.innerText = "GS1 引擎啟動中...";
 
   const hints = new Map();
   hints.set(2, true); // TRY_HARDER
   hints.set(3, [4, 5, 11]); // Code 128, DataMatrix, QR
   hints.set(9, true); // ASSUME_GS1
   
-  codeReader = new ZXingBrowser.BrowserMultiFormatReader(hints);
-  
-  // 開始解碼循環
   try {
-    codeReader.decodeFromVideoElement(video, (result) => {
+    codeReader = new ZXingBrowser.BrowserMultiFormatReader(hints);
+    statusEl.innerText = "請將條碼對準綠框";
+    
+    codeReader.decodeFromVideoElement(video, (result, error) => {
       if (result && isScanning) {
           handleDetection(result.getText());
       }
     });
   } catch (err) {
-    console.error('Decoder Error:', err);
-    statusEl.innerText = "解碼引擎啟動失敗";
+    console.error('Decoder Start Error:', err);
+    statusEl.innerText = "解碼器啟動失敗";
   }
 }
 
-// 3. 手動輸入處理
+// 4. 其他功能
 function handleManualInput() {
   const inputEl = document.getElementById('manual-gs1-input');
   const val = inputEl.value.trim();
@@ -298,7 +328,6 @@ function handleManualInput() {
   handleDetection(val);
 }
 
-// 4. LINE 原生掃描
 async function liffScan() {
   try {
     const result = await liff.scanCodeV2();
@@ -308,7 +337,6 @@ async function liffScan() {
   }
 }
 
-// 5. 解析 GS1
 function parseGS1(raw) {
     const data = { gtin: null, batch: null, expiry: null };
     let clean = raw.trim().replace(/^\](C1|d2|e0|Q3)/, "");
@@ -365,7 +393,6 @@ function formatGS1Date(s) {
     return `${y}-${m}-${d}`;
 }
 
-// 6. 觸發顯示
 function handleDetection(raw) {
   isScanning = false;
   currentData = parseGS1(raw);
@@ -377,7 +404,7 @@ function handleDetection(raw) {
     <div class="data-row"><span class="data-label">有效日期</span><span class="data-value">${currentData.expiry || '未辨識'}</span></div>
   `;
   
-  document.getElementById('raw-data-debug').innerText = `原始內容: ${raw}`;
+  document.getElementById('raw-data-debug').innerText = `解析內容: ${raw}`;
   document.getElementById('result-sheet').classList.add('open');
   
   if (navigator.vibrate) navigator.vibrate(100);
@@ -397,15 +424,9 @@ function backToHome() {
     document.getElementById('page-auth').classList.add('active');
 }
 
-// 7. 發送至 LINE
 async function sendToLine() {
   if (!currentData) return;
-  
-  if (!liff.isLoggedIn()) {
-      alert("請先完成 LINE 登入。");
-      initLiff();
-      return;
-  }
+  if (!liff.isLoggedIn()) { alert("請登入 LINE。"); return; }
 
   const flex = {
     type: "bubble",
@@ -443,13 +464,12 @@ async function sendToLine() {
 
 window.onload = () => {
     liff.init({ liffId: LIFF_ID }).then(() => {
-        isLiffInited = true;
         if (liff.isLoggedIn()) {
             liff.getProfile().then(profile => {
                 document.getElementById('user-info').innerText = profile.displayName;
                 document.getElementById('page-auth').classList.remove('active');
                 document.getElementById('page-scanner').classList.add('active');
-                startCamera();
+                setTimeout(startCamera, 300);
             });
         }
     });
