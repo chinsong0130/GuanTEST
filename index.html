@@ -1,0 +1,1273 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>GS1 產品掃描器</title>
+<script src="https://static.line-scdn.net/liff/edge/versions/2.22.3/sdk.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Noto+Sans+TC:wght@400;500;700&display=swap');
+
+:root {
+  --green: #06C755;
+  --green-dark: #05A847;
+  --green-dim: rgba(6,199,85,0.12);
+  --black: #080808;
+  --surface: #141414;
+  --surface2: #1C1C1C;
+  --surface3: #252525;
+  --border: rgba(255,255,255,0.07);
+  --text: #EFEFEF;
+  --muted: #777;
+  --dim: #444;
+  --red: #FF4444;
+  --amber: #FF9500;
+  --mono: 'DM Mono', monospace;
+  --sans: 'Noto Sans TC', sans-serif;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+html, body {
+  height: 100%;
+  background: var(--black);
+  color: var(--text);
+  font-family: var(--sans);
+  overflow: hidden;
+}
+
+/* ── PAGES ── */
+.page { position: fixed; inset: 0; display: none; flex-direction: column; }
+.page.active { display: flex; }
+
+/* ══════════════════════════════════
+   AUTH PAGE
+══════════════════════════════════ */
+#page-auth {
+  align-items: center;
+  justify-content: flex-end;
+  padding-bottom: 48px;
+  background: var(--black);
+}
+.auth-bg {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+.auth-ring {
+  position: absolute;
+  border-radius: 50%;
+  border: 1px solid rgba(6,199,85,0.1);
+  animation: ring-expand 3s ease-out infinite;
+}
+.auth-ring:nth-child(1) { width: 200px; height: 200px; animation-delay: 0s; }
+.auth-ring:nth-child(2) { width: 320px; height: 320px; animation-delay: 0.6s; }
+.auth-ring:nth-child(3) { width: 460px; height: 460px; animation-delay: 1.2s; }
+@keyframes ring-expand {
+  0%   { opacity: 0.6; transform: scale(0.9); }
+  100% { opacity: 0;   transform: scale(1.1); }
+}
+.auth-icon {
+  width: 88px; height: 88px;
+  border-radius: 28px;
+  background: var(--green-dim);
+  border: 1px solid rgba(6,199,85,0.2);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 40px;
+  position: relative;
+  z-index: 1;
+}
+.auth-content {
+  width: 100%;
+  max-width: 400px;
+  padding: 0 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  position: relative;
+  z-index: 1;
+}
+.auth-title {
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1.25;
+  text-align: center;
+}
+.auth-sub {
+  font-size: 14px;
+  color: var(--muted);
+  line-height: 1.7;
+  text-align: center;
+  margin-bottom: 8px;
+}
+.auth-supports {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+  margin-bottom: 4px;
+}
+.support-chip {
+  font-family: var(--mono);
+  font-size: 10px;
+  padding: 3px 9px;
+  border-radius: 100px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  color: var(--muted);
+}
+
+/* ══════════════════════════════════
+   SCANNER PAGE  (全螢幕相機)
+══════════════════════════════════ */
+#page-scanner { background: #000; }
+
+/* 相機全螢幕 */
+#camera-video {
+  position: absolute;
+  inset: 0;
+  width: 100%; height: 100%;
+  object-fit: cover;
+}
+#camera-canvas { display: none; }
+
+/* 掃描 overlay */
+.scan-ui {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  pointer-events: none;
+}
+
+/* 頂部 bar */
+.scan-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 52px 20px 16px;
+  background: linear-gradient(to bottom, rgba(0,0,0,0.75) 0%, transparent 100%);
+  pointer-events: all;
+}
+.scan-logo {
+  display: flex; align-items: center; gap: 8px;
+}
+.scan-logo-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--green);
+  box-shadow: 0 0 10px var(--green);
+  animation: pulse 2s infinite;
+}
+@keyframes pulse {
+  0%,100% { box-shadow: 0 0 6px var(--green); }
+  50%      { box-shadow: 0 0 16px var(--green), 0 0 32px rgba(6,199,85,0.4); }
+}
+.scan-logo-text {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: #fff;
+  letter-spacing: 0.12em;
+  opacity: 0.9;
+}
+.user-pill {
+  display: flex; align-items: center; gap: 6px;
+  background: rgba(0,0,0,0.5);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 100px;
+  padding: 5px 10px 5px 5px;
+  font-size: 12px;
+  color: rgba(255,255,255,0.8);
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+.user-pill.show { opacity: 1; }
+.user-pill img {
+  width: 20px; height: 20px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: rgba(255,255,255,0.1);
+}
+
+/* 中央取景框 */
+.viewfinder-area {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+.vf-shadow {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(to right,  rgba(0,0,0,0.55) 0%,   transparent 20%,  transparent 80%,  rgba(0,0,0,0.55) 100%),
+    linear-gradient(to bottom, rgba(0,0,0,0.55) 0%,   transparent 20%,  transparent 80%,  rgba(0,0,0,0.55) 100%);
+}
+.vf-box {
+  width: min(72vw, 280px);
+  aspect-ratio: 1;
+  position: relative;
+  z-index: 1;
+}
+/* 四角框 */
+.vf-box::before, .vf-box::after,
+.vf-box > .vf-corner::before, .vf-box > .vf-corner::after {
+  content: '';
+  position: absolute;
+  width: 28px; height: 28px;
+  border-color: #fff;
+  border-style: solid;
+}
+.vf-box::before       { top:0;    left:0;  border-width: 2px 0 0 2px; }
+.vf-box::after        { top:0;    right:0; border-width: 2px 2px 0 0; }
+.vf-box > .vf-corner::before { bottom:0; left:0;  border-width: 0 0 2px 2px; }
+.vf-box > .vf-corner::after  { bottom:0; right:0; border-width: 0 2px 2px 0; }
+
+/* 掃描線 */
+.scan-beam {
+  position: absolute;
+  left: 0; right: 0;
+  height: 2px;
+  background: linear-gradient(to right, transparent, var(--green) 30%, var(--green) 70%, transparent);
+  box-shadow: 0 0 12px 3px rgba(6,199,85,0.6);
+  animation: beam 2.2s cubic-bezier(0.45,0,0.55,1) infinite;
+}
+@keyframes beam {
+  0%   { top: 4%; opacity: 0; }
+  8%   { opacity: 1; }
+  92%  { opacity: 1; }
+  100% { top: 96%; opacity: 0; }
+}
+
+/* 成功閃光 */
+.vf-flash {
+  position: absolute;
+  inset: -4px;
+  border-radius: 4px;
+  background: rgba(6,199,85,0.25);
+  opacity: 0;
+  pointer-events: none;
+}
+.vf-flash.pop {
+  animation: flash-pop 0.5s ease-out forwards;
+}
+@keyframes flash-pop {
+  0%   { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+/* 掃描提示文字 */
+.scan-hint-text {
+  font-size: 13px;
+  color: rgba(255,255,255,0.5);
+  letter-spacing: 0.04em;
+  margin-top: 20px;
+  text-align: center;
+}
+
+/* 底部控制 */
+.scan-bottom {
+  padding: 16px 20px 44px;
+  background: linear-gradient(to top, rgba(0,0,0,0.8) 0%, transparent 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  pointer-events: all;
+}
+
+/* 模式切換標籤 */
+.mode-tabs {
+  display: flex;
+  background: rgba(0,0,0,0.5);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 12px;
+  padding: 3px;
+  gap: 3px;
+}
+.mode-tab {
+  flex: 1;
+  padding: 9px;
+  border-radius: 9px;
+  font-size: 12px;
+  font-family: var(--mono);
+  text-align: center;
+  cursor: pointer;
+  color: rgba(255,255,255,0.45);
+  transition: all 0.2s;
+  letter-spacing: 0.06em;
+  border: none;
+  background: none;
+}
+.mode-tab.active {
+  background: rgba(255,255,255,0.12);
+  color: #fff;
+}
+
+/* 掃描按鈕 (LIFF模式用) */
+.liff-scan-btn {
+  width: 72px; height: 72px;
+  border-radius: 50%;
+  background: var(--green);
+  border: 4px solid rgba(255,255,255,0.3);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 28px;
+  cursor: pointer;
+  align-self: center;
+  transition: transform 0.15s;
+  box-shadow: 0 0 24px rgba(6,199,85,0.5);
+}
+.liff-scan-btn:active { transform: scale(0.93); }
+
+/* 手動輸入面板 */
+.manual-panel {
+  background: rgba(0,0,0,0.7);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 16px;
+  padding: 16px;
+  display: none;
+  flex-direction: column;
+  gap: 10px;
+}
+.manual-panel.open { display: flex; }
+.manual-input {
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 10px;
+  padding: 11px 14px;
+  color: #fff;
+  font-family: var(--mono);
+  font-size: 12px;
+  width: 100%;
+  outline: none;
+}
+.manual-input:focus { border-color: rgba(6,199,85,0.5); }
+.manual-input::placeholder { color: rgba(255,255,255,0.25); }
+.preset-row {
+  display: flex; gap: 6px; flex-wrap: wrap;
+}
+.preset-chip {
+  background: rgba(255,255,255,0.07);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-family: var(--mono);
+  color: rgba(255,255,255,0.5);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.preset-chip:active { background: rgba(255,255,255,0.15); color: #fff; }
+
+/* ══════════════════════════════════
+   RESULT SHEET  (slide-up)
+══════════════════════════════════ */
+.result-sheet {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  pointer-events: none;
+  display: flex;
+  align-items: flex-end;
+}
+.result-sheet-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,0);
+  transition: background 0.35s;
+}
+.result-sheet.open .result-sheet-backdrop {
+  background: rgba(0,0,0,0.6);
+  pointer-events: all;
+}
+.result-sheet-card {
+  position: relative;
+  width: 100%;
+  max-width: 520px;
+  margin: 0 auto;
+  background: var(--surface);
+  border-radius: 24px 24px 0 0;
+  border-top: 1px solid var(--border);
+  padding: 0 0 40px;
+  transform: translateY(100%);
+  transition: transform 0.4s cubic-bezier(0.22,1,0.36,1);
+  pointer-events: all;
+  max-height: 90dvh;
+  overflow-y: auto;
+}
+.result-sheet.open .result-sheet-card {
+  transform: translateY(0);
+}
+.sheet-handle {
+  width: 40px; height: 4px;
+  background: rgba(255,255,255,0.15);
+  border-radius: 100px;
+  margin: 12px auto 0;
+}
+.sheet-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 18px 20px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.sheet-icon { font-size: 22px; }
+.sheet-title {
+  font-size: 15px;
+  font-weight: 700;
+  flex: 1;
+}
+.sheet-close {
+  width: 32px; height: 32px;
+  border-radius: 50%;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  font-size: 16px;
+  color: var(--muted);
+  transition: background 0.15s;
+  flex-shrink: 0;
+}
+.sheet-close:active { background: var(--surface3); }
+
+/* 結果欄位 */
+.result-rows { padding: 4px 0; }
+.result-row {
+  display: flex;
+  align-items: flex-start;
+  padding: 13px 20px;
+  border-bottom: 1px solid var(--border);
+  gap: 14px;
+}
+.result-row:last-child { border-bottom: none; }
+.rr-label {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--dim);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  width: 50px;
+  flex-shrink: 0;
+  padding-top: 3px;
+}
+.rr-val {
+  font-family: var(--mono);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text);
+  flex: 1;
+  word-break: break-all;
+  line-height: 1.45;
+}
+.rr-val.green  { color: var(--green); }
+.rr-val.red    { color: var(--red); }
+.rr-val.amber  { color: var(--amber); }
+.rr-val.empty  { color: var(--dim); font-size: 12px; font-style: italic; }
+.expiry-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 100px;
+  font-family: var(--sans);
+  font-weight: 500;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+.pill-ok      { background: rgba(6,199,85,0.12);  color: var(--green); border: 1px solid rgba(6,199,85,0.2); }
+.pill-soon    { background: rgba(255,149,0,0.12);  color: var(--amber); border: 1px solid rgba(255,149,0,0.2); }
+.pill-expired { background: rgba(255,68,68,0.12);  color: var(--red);   border: 1px solid rgba(255,68,68,0.2); }
+
+/* Raw 原始 */
+.raw-box {
+  margin: 0 16px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px 14px;
+}
+.raw-lbl {
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--dim);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+.raw-txt {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+  word-break: break-all;
+  line-height: 1.55;
+}
+
+/* Action 按鈕 */
+.sheet-actions {
+  display: flex;
+  gap: 10px;
+  padding: 16px 16px 0;
+}
+.sheet-btn {
+  flex: 1;
+  padding: 14px 10px;
+  border-radius: 12px;
+  border: none;
+  font-family: var(--sans);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: all 0.15s;
+}
+.sheet-btn-primary   { background: var(--green);   color: #000; }
+.sheet-btn-secondary { background: var(--surface3); color: var(--text); border: 1px solid var(--border); }
+.sheet-btn:active    { transform: scale(0.97); }
+.sheet-btn:disabled  { opacity: 0.35; pointer-events: none; }
+
+/* ── SHARED ── */
+.btn {
+  width: 100%;
+  padding: 15px;
+  border-radius: 12px;
+  border: none;
+  font-family: var(--sans);
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  transition: all 0.15s;
+}
+.btn-green    { background: var(--green); color: #000; }
+.btn-surface  { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+.btn-green:active   { background: var(--green-dark); transform: scale(0.98); }
+.btn-surface:active { background: var(--surface3); transform: scale(0.98); }
+
+/* Camera permission error */
+.cam-error {
+  position: absolute;
+  inset: 0;
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 40px;
+  text-align: center;
+  z-index: 5;
+}
+.cam-error.show { display: flex; }
+.cam-error-icon { font-size: 48px; }
+.cam-error-title { font-size: 18px; font-weight: 700; }
+.cam-error-desc  { font-size: 13px; color: var(--muted); line-height: 1.6; }
+
+/* Dev banner */
+.dev-flag {
+  position: absolute;
+  top: 56px; right: 16px;
+  background: rgba(255,149,0,0.15);
+  border: 1px solid rgba(255,149,0,0.3);
+  border-radius: 6px;
+  padding: 3px 8px;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--amber);
+  letter-spacing: 0.1em;
+  z-index: 10;
+  display: none;
+}
+.dev-flag.show { display: block; }
+
+/* Toast */
+.toast {
+  position: fixed;
+  bottom: 36px;
+  left: 50%;
+  transform: translateX(-50%) translateY(8px);
+  background: rgba(30,30,30,0.95);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 100px;
+  padding: 10px 20px;
+  font-size: 13px;
+  color: var(--text);
+  z-index: 999;
+  opacity: 0;
+  pointer-events: none;
+  transition: all 0.3s cubic-bezier(0.22,1,0.36,1);
+  white-space: nowrap;
+  max-width: 88vw;
+  text-align: center;
+}
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+.toast.ok  { color: var(--green); border-color: rgba(6,199,85,0.25); }
+.toast.err { color: var(--red);   border-color: rgba(255,68,68,0.25); }
+
+/* Loading */
+.loader {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.6);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 200;
+  opacity: 0; pointer-events: none;
+  transition: opacity 0.2s;
+}
+.loader.on { opacity: 1; pointer-events: all; }
+.spinner {
+  width: 36px; height: 36px;
+  border: 2px solid rgba(255,255,255,0.1);
+  border-top-color: var(--green);
+  border-radius: 50%;
+  animation: spin 0.65s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<!-- ══ AUTH PAGE ══ -->
+<div class="page active" id="page-auth">
+  <div class="auth-bg">
+    <div class="auth-ring"></div>
+    <div class="auth-ring"></div>
+    <div class="auth-ring"></div>
+    <div class="auth-icon">📦</div>
+  </div>
+  <div class="auth-content">
+    <div class="auth-title">GS1 產品<br>條碼掃描器</div>
+    <p class="auth-sub">掃描 GS1 條碼，自動解析序號、批號、有效期限，發送至 LINE</p>
+    <div class="auth-supports">
+      <span class="support-chip">GS1-128</span>
+      <span class="support-chip">DataMatrix</span>
+      <span class="support-chip">QR Code</span>
+      <span class="support-chip">Flex Message</span>
+    </div>
+    <button class="btn btn-green" onclick="initLiff()">以 LINE 帳號登入</button>
+    <button class="btn btn-surface" onclick="startCameraMode()">📷 直接使用相機掃描</button>
+    <button class="btn btn-surface" style="opacity:0.6" onclick="startDevMode()">⚡ 開發測試模式</button>
+  </div>
+</div>
+
+<!-- ══ SCANNER PAGE ══ -->
+<div class="page" id="page-scanner">
+  <!-- 全螢幕相機 -->
+  <video id="camera-video" autoplay playsinline muted></video>
+  <canvas id="camera-canvas"></canvas>
+
+  <!-- 相機權限錯誤 -->
+  <div class="cam-error" id="cam-error">
+    <div class="cam-error-icon">🚫</div>
+    <div class="cam-error-title">無法存取相機</div>
+    <p class="cam-error-desc">請在瀏覽器設定中允許使用相機，或使用開發模式測試</p>
+    <button class="btn btn-surface" style="max-width:200px" onclick="retryCamera()">重試</button>
+  </div>
+
+  <!-- Dev 標記 -->
+  <div class="dev-flag" id="dev-flag">DEV MODE</div>
+
+  <!-- Scan UI overlay -->
+  <div class="scan-ui">
+    <!-- Top bar -->
+    <div class="scan-topbar">
+      <div class="scan-logo">
+        <div class="scan-logo-dot"></div>
+        <span class="scan-logo-text">GS1 SCANNER</span>
+      </div>
+      <div class="user-pill" id="user-pill">
+        <img id="user-avatar" src="" alt="">
+        <span id="user-name"></span>
+      </div>
+    </div>
+
+    <!-- Viewfinder -->
+    <div class="viewfinder-area">
+      <div class="vf-shadow"></div>
+      <div style="display:flex;flex-direction:column;align-items:center">
+        <div class="vf-box" id="vf-box">
+          <div class="vf-corner"></div>
+          <div class="scan-beam" id="scan-beam"></div>
+          <div class="vf-flash" id="vf-flash"></div>
+        </div>
+        <div class="scan-hint-text" id="scan-hint">對準條碼，自動識別</div>
+      </div>
+    </div>
+
+    <!-- Bottom controls -->
+    <div class="scan-bottom">
+      <!-- Mode tabs -->
+      <div class="mode-tabs">
+        <button class="mode-tab active" id="tab-camera" onclick="setMode('camera')">CAMERA</button>
+        <button class="mode-tab" id="tab-liff"   onclick="setMode('liff')">LIFF</button>
+        <button class="mode-tab" id="tab-manual" onclick="setMode('manual')">MANUAL</button>
+      </div>
+
+      <!-- LIFF scan button (shown in liff mode) -->
+      <div id="liff-btn-wrap" style="display:none;justify-content:center">
+        <div class="liff-scan-btn" onclick="liffScan()">📷</div>
+      </div>
+
+      <!-- Manual input -->
+      <div class="manual-panel" id="manual-panel">
+        <input class="manual-input" id="manual-input"
+          placeholder="(01)04150003957991(17)251231(10)LOT01(21)SN123"
+          type="text">
+        <div class="preset-row">
+          <div class="preset-chip" onclick="setPreset('a')">GS1-128</div>
+          <div class="preset-chip" onclick="setPreset('b')">DataMatrix</div>
+          <div class="preset-chip" onclick="setPreset('c')">即將到期</div>
+          <div class="preset-chip" onclick="setPreset('d')">已過期</div>
+        </div>
+        <button class="btn btn-green" style="padding:12px" onclick="processManual()">解析</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ RESULT SHEET ══ -->
+<div class="result-sheet" id="result-sheet">
+  <div class="result-sheet-backdrop" onclick="closeSheet()"></div>
+  <div class="result-sheet-card">
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+      <span class="sheet-icon">📋</span>
+      <span class="sheet-title">GS1 解析結果</span>
+      <div class="sheet-close" onclick="closeSheet()">✕</div>
+    </div>
+    <div class="result-rows" id="result-rows"></div>
+    <div class="raw-box" id="raw-box" style="display:none">
+      <div class="raw-lbl">原始條碼</div>
+      <div class="raw-txt" id="raw-txt"></div>
+    </div>
+    <div class="sheet-actions">
+      <button class="sheet-btn sheet-btn-primary" id="send-btn" onclick="sendFlex()">📤 發送至 LINE</button>
+      <button class="sheet-btn sheet-btn-secondary" onclick="rescan()">🔄 再掃一次</button>
+    </div>
+  </div>
+</div>
+
+<!-- LOADING / TOAST -->
+<div class="loader" id="loader"><div class="spinner"></div></div>
+<div class="toast" id="toast"></div>
+
+<script>
+// ═══════════════════════════════════════
+//  CONFIG
+// ═══════════════════════════════════════
+const LIFF_ID = 'YOUR_LIFF_ID_HERE';
+
+// ═══════════════════════════════════════
+//  STATE
+// ═══════════════════════════════════════
+let appMode = 'camera';   // camera | liff | manual | dev
+let liffReady = false;
+let currentParsed = null;
+let videoStream = null;
+let scanLoop = null;
+let lastDetect = 0;
+let zxing = null;         // ZXing reader instance
+
+// ═══════════════════════════════════════
+//  GS1 PARSER
+// ═══════════════════════════════════════
+const GS1_AI_MAP = {
+  '00':{ len:18 }, '01':{ len:14 }, '02':{ len:14 },
+  '10':{ len:-1, max:20 }, '11':{ len:6 }, '12':{ len:6 },
+  '13':{ len:6 },  '15':{ len:6 }, '16':{ len:6 }, '17':{ len:6 },
+  '20':{ len:2 },
+  '21':{ len:-1, max:20 }, '22':{ len:-1, max:20 },
+  '30':{ len:-1, max:8 },
+  '310':{ len:6 }, '311':{ len:6 }, '320':{ len:6 },
+  '37':{ len:-1, max:8 },
+  '91':{ len:-1, max:90 }, '92':{ len:-1, max:90 },
+};
+const FNC1 = '\x1D';
+
+function parseGS1(raw) {
+  const r = { gtin:null, batchLot:null, expirationDate:null, serialNumber:null, raw, errors:[] };
+  if (!raw) return r;
+  let s = raw;
+
+  // Strip AIM identifiers
+  if (/^\](d2|C1|e0|Q3)/.test(s)) s = s.slice(3);
+
+  // Parenthetical format → flat + FNC1
+  if (s.startsWith('(')) {
+    s = '';
+    const re = /\((\d{2,4})\)([^(]*)/g;
+    let m;
+    while ((m = re.exec(raw)) !== null) {
+      const ai = m[1], val = m[2].trim(), spec = GS1_AI_MAP[ai];
+      s += ai + val;
+      if (spec && spec.len === -1) s += FNC1;
+    }
+  }
+
+  // Normalise separators
+  s = s.replace(/[\x1D\x1E\x04]/g, FNC1);
+
+  let i = 0;
+  while (i < s.length) {
+    let ai = null, spec = null;
+    for (const l of [4,3,2]) {
+      const c = s.substr(i, l);
+      if (GS1_AI_MAP[c]) { ai = c; spec = GS1_AI_MAP[c]; break; }
+    }
+    if (!ai) { i++; continue; }
+    i += ai.length;
+
+    let val;
+    if (spec.len > 0) {
+      val = s.substr(i, spec.len);
+      i += spec.len;
+    } else {
+      const fi = s.indexOf(FNC1, i);
+      val = fi === -1 ? s.slice(i) : s.slice(i, fi);
+      i += val.length;
+      if (s[i] === FNC1) i++;
+      if (spec.max && val.length > spec.max) val = val.slice(0, spec.max);
+    }
+
+    switch (ai) {
+      case '01': case '02': r.gtin = val; break;
+      case '10': r.batchLot = val; break;
+      case '17': r.expirationDate = gs1Date(val); break;
+      case '21': r.serialNumber = val; break;
+    }
+  }
+  if (!r.gtin && !r.batchLot && !r.expirationDate && !r.serialNumber)
+    r.errors.push('未識別到任何 GS1 AI');
+  return r;
+}
+
+function gs1Date(s) {
+  if (!s || s.length !== 6) return s;
+  const yy = +s.slice(0,2), mm = +s.slice(2,4), dd = +s.slice(4,6);
+  const yr = yy <= 49 ? 2000+yy : 1900+yy;
+  const day = dd === 0 ? new Date(yr, mm, 0).getDate() : dd;
+  return `${yr}-${String(mm).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+}
+
+function expiryInfo(d) {
+  if (!d) return null;
+  const diff = Math.floor((new Date(d) - Date.now()) / 86400000);
+  if (diff < 0)  return { cls:'red',   pill:'pill-expired', label:'已過期' };
+  if (diff <= 30) return { cls:'amber', pill:'pill-soon',    label:`${diff}天後到期` };
+  return           { cls:'green',  pill:'pill-ok',      label:'有效' };
+}
+
+// ═══════════════════════════════════════
+//  ZXING CAMERA SCANNER
+// ═══════════════════════════════════════
+async function loadZXing() {
+  if (zxing) return true;
+  return new Promise(resolve => {
+    const s = document.createElement('script');
+    s.src = 'https://unpkg.com/@zxing/browser@0.1.5/umd/index.min.js';
+    s.onload = () => {
+      try {
+        zxing = new ZXingBrowser.BrowserMultiFormatReader(new Map([
+          [ZXingBrowser.DecodeHintType?.TRY_HARDER, true]
+        ]));
+      } catch(e) {
+        // Fallback without hints
+        zxing = new ZXingBrowser.BrowserMultiFormatReader();
+      }
+      resolve(true);
+    };
+    s.onerror = () => resolve(false);
+    document.head.appendChild(s);
+  });
+}
+
+async function startCamera() {
+  const video = document.getElementById('camera-video');
+  const errEl = document.getElementById('cam-error');
+  errEl.classList.remove('show');
+
+  // Load ZXing
+  const ok = await loadZXing();
+  if (!ok) { showToast('掃描器載入失敗', 'err'); return; }
+
+  // Get camera
+  try {
+    const constraints = {
+      video: {
+        facingMode: { ideal: 'environment' },
+        width:  { ideal: 1280 },
+        height: { ideal: 720 },
+      }
+    };
+    videoStream = await navigator.mediaDevices.getUserMedia(constraints);
+    video.srcObject = videoStream;
+    await video.play();
+    startScanLoop();
+  } catch(e) {
+    errEl.classList.add('show');
+    console.warn('Camera error:', e);
+  }
+}
+
+function startScanLoop() {
+  const video  = document.getElementById('camera-video');
+  const canvas = document.getElementById('camera-canvas');
+  const ctx    = canvas.getContext('2d', { willReadFrequently: true });
+
+  if (scanLoop) cancelAnimationFrame(scanLoop);
+
+  const tick = async () => {
+    if (appMode !== 'camera') return;
+    if (video.readyState < 2) { scanLoop = requestAnimationFrame(tick); return; }
+
+    const now = Date.now();
+    if (now - lastDetect > 300) {   // throttle: max ~3fps decode
+      lastDetect = now;
+      canvas.width  = video.videoWidth  || 640;
+      canvas.height = video.videoHeight || 480;
+      ctx.drawImage(video, 0, 0);
+
+      try {
+        const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const lum = toLuminanceSource(imgData);
+        const bitmap = new ZXingBrowser.HTMLCanvasElementLuminanceSource.createBitmapFromImageData
+          ? null : lum;
+
+        // Use decodeFromCanvas for reliability
+        const result = await zxing.decodeFromCanvas(canvas);
+        if (result && result.getText()) {
+          onDetected(result.getText());
+          return;
+        }
+      } catch(e) {
+        // Not found — continue
+      }
+    }
+    scanLoop = requestAnimationFrame(tick);
+  };
+  scanLoop = requestAnimationFrame(tick);
+}
+
+// Simplified: use decodeFromVideoElement directly
+function startScanLoopV2() {
+  const video = document.getElementById('camera-video');
+  if (!zxing) return;
+  zxing.decodeFromVideoElement(video, (result, err) => {
+    if (result) onDetected(result.getText());
+  });
+}
+
+async function startCamera() {
+  const video = document.getElementById('camera-video');
+  const errEl = document.getElementById('cam-error');
+  errEl.classList.remove('show');
+
+  const ok = await loadZXing();
+  if (!ok) { showToast('掃描器載入失敗', 'err'); return; }
+
+  try {
+    videoStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal:'environment' }, width:{ideal:1280}, height:{ideal:720} }
+    });
+    video.srcObject = videoStream;
+    await video.play();
+    // Use ZXing continuous decode
+    zxing.decodeFromStream(videoStream, video, (result, err) => {
+      if (result && appMode === 'camera') {
+        onDetected(result.getText());
+      }
+    });
+  } catch(e) {
+    errEl.classList.add('show');
+  }
+}
+
+function stopCamera() {
+  if (videoStream) {
+    videoStream.getTracks().forEach(t => t.stop());
+    videoStream = null;
+  }
+  if (zxing) {
+    try { zxing.reset(); } catch(e) {}
+  }
+  if (scanLoop) { cancelAnimationFrame(scanLoop); scanLoop = null; }
+}
+
+function retryCamera() {
+  startCamera();
+}
+
+// ═══════════════════════════════════════
+//  MODE SWITCHING
+// ═══════════════════════════════════════
+function setMode(mode) {
+  appMode = mode;
+  ['camera','liff','manual'].forEach(m => {
+    document.getElementById('tab-'+m).classList.toggle('active', m === mode);
+  });
+  document.getElementById('liff-btn-wrap').style.display   = mode === 'liff'   ? 'flex' : 'none';
+  document.getElementById('manual-panel').classList.toggle('open', mode === 'manual');
+
+  if (mode === 'camera') {
+    document.getElementById('scan-hint').textContent = '對準條碼，自動識別';
+    if (!videoStream) startCamera();
+  } else {
+    document.getElementById('scan-hint').textContent = mode === 'liff' ? '點擊按鈕啟動 LINE 掃描' : '輸入條碼字串後按解析';
+    stopCamera();
+  }
+}
+
+// ═══════════════════════════════════════
+//  DETECTION CALLBACK
+// ═══════════════════════════════════════
+let detectCooldown = false;
+function onDetected(raw) {
+  if (detectCooldown) return;
+  detectCooldown = true;
+  setTimeout(() => detectCooldown = false, 2000);
+
+  // Flash
+  const flash = document.getElementById('vf-flash');
+  flash.classList.remove('pop');
+  void flash.offsetWidth;
+  flash.classList.add('pop');
+
+  const parsed = parseGS1(raw);
+  currentParsed = parsed;
+  showResult(parsed);
+  showToast('✓ 解析成功', 'ok');
+}
+
+// ═══════════════════════════════════════
+//  RESULT SHEET
+// ═══════════════════════════════════════
+function showResult(p) {
+  const exp = expiryInfo(p.expirationDate);
+  const rows = [];
+
+  const row = (label, value, cls) => `
+    <div class="result-row">
+      <span class="rr-label">${label}</span>
+      <span class="rr-val ${cls || ''}">${value}</span>
+    </div>`;
+
+  rows.push(row('序號',
+    p.serialNumber
+      ? `<span style="color:var(--green)">${p.serialNumber}</span>`
+      : `<span class="empty">未包含</span>`, ''));
+
+  rows.push(row('批號',
+    p.batchLot || `<span class="empty">未包含</span>`, ''));
+
+  if (p.expirationDate && exp) {
+    rows.push(row('到期日',
+      `<span class="${exp.cls}">${p.expirationDate}<span class="expiry-pill ${exp.pill}">${exp.label}</span></span>`, ''));
+  } else {
+    rows.push(row('到期日', `<span class="empty">未包含</span>`, ''));
+  }
+
+  rows.push(row('GTIN',
+    p.gtin
+      ? `<span style="font-size:12px;opacity:0.7">${p.gtin}</span>`
+      : `<span class="empty">未包含</span>`, ''));
+
+  document.getElementById('result-rows').innerHTML = rows.join('');
+  document.getElementById('raw-txt').textContent = p.raw;
+  document.getElementById('raw-box').style.display = 'block';
+
+  const canSend = liffReady && appMode !== 'dev';
+  document.getElementById('send-btn').disabled = !canSend;
+  document.getElementById('send-btn').title = canSend ? '' : '需登入 LINE 才能發送';
+
+  document.getElementById('result-sheet').classList.add('open');
+}
+
+function closeSheet() {
+  document.getElementById('result-sheet').classList.remove('open');
+  // Resume camera
+  if (appMode === 'camera' && !videoStream) startCamera();
+}
+
+function rescan() {
+  closeSheet();
+  currentParsed = null;
+}
+
+// ═══════════════════════════════════════
+//  LIFF
+// ═══════════════════════════════════════
+async function initLiff() {
+  if (LIFF_ID === '2009550177-tzqVTGF1') {
+    showToast('請設定 LIFF_ID', 'err'); return;
+  }
+  loading(true);
+  try {
+    await liff.init({ liffId: LIFF_ID });
+    if (!liff.isLoggedIn()) { liff.login(); return; }
+    const profile = await liff.getProfile();
+    liffReady = true;
+    setUserChip(profile);
+    showPage('scanner');
+    setMode('camera');
+    startCamera();
+  } catch(e) {
+    showToast('LIFF 初始化失敗: ' + e.message, 'err');
+  } finally { loading(false); }
+}
+
+async function liffScan() {
+  try {
+    const r = await liff.scanCodeV2();
+    if (r?.value) onDetected(r.value);
+  } catch(e) {
+    if (e.code !== 'FORBIDDEN') showToast('掃描取消', 'err');
+  }
+}
+
+async function sendFlex() {
+  if (!currentParsed || !liffReady) return;
+  loading(true);
+  try {
+    await liff.sendMessages([buildFlex(currentParsed)]);
+    showToast('✓ 已發送至 LINE', 'ok');
+    setTimeout(() => { try { liff.closeWindow(); } catch(e){} }, 1000);
+  } catch(e) {
+    showToast('發送失敗: ' + (e.message||e), 'err');
+  } finally { loading(false); }
+}
+
+function buildFlex(p) {
+  const exp = expiryInfo(p.expirationDate);
+  const now = new Date();
+  const ts  = `${now.getFullYear()}/${String(now.getMonth()+1).padStart(2,'0')}/${String(now.getDate()).padStart(2,'0')} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+  const clr = exp ? (exp.cls === 'red' ? '#FF4444' : exp.cls === 'amber' ? '#FF9500' : '#06C755') : '#888888';
+
+  const mkRow = (lbl, val, c) => ({
+    type:'box', layout:'horizontal', spacing:'sm', paddingTop:'4px', paddingBottom:'4px',
+    contents:[
+      { type:'text', text:lbl, color:'#888888', size:'sm', flex:3 },
+      { type:'text', text:val||'—', color:c||'#EEEEEE', size:'sm', flex:7, weight:val?'bold':'regular', wrap:true }
+    ]
+  });
+
+  const rows = [];
+  if (p.serialNumber)   rows.push(mkRow('序號 (S/N)', p.serialNumber, '#06C755'));
+  if (p.batchLot)       rows.push(mkRow('批號 (Lot)', p.batchLot));
+  if (p.expirationDate) rows.push(mkRow('有效期限', p.expirationDate + (exp ? ` (${exp.label})` : ''), clr));
+  if (p.gtin)           rows.push(mkRow('GTIN', p.gtin, '#666666'));
+  if (!rows.length)     rows.push(mkRow('狀態', '無可識別資料', '#FF4444'));
+
+  return {
+    type:'flex',
+    altText: `📦 GS1 掃描 ${p.serialNumber||p.batchLot||'結果'}`,
+    contents:{
+      type:'bubble', size:'kilo',
+      header:{ type:'box', layout:'vertical', backgroundColor:'#0A0A0A', paddingAll:'16px',
+        contents:[{ type:'text', text:'📦  GS1 產品掃描結果', color:'#06C755', size:'sm', weight:'bold' }] },
+      body:{ type:'box', layout:'vertical', spacing:'xs', paddingAll:'16px',
+        contents:[
+          ...rows,
+          { type:'separator', margin:'md', color:'#2A2A2A' },
+          { type:'text', text:`掃描時間：${ts}`, size:'xxs', color:'#555555', margin:'md' }
+        ]
+      }
+    }
+  };
+}
+
+// ═══════════════════════════════════════
+//  CAMERA MODE (no login)
+// ═══════════════════════════════════════
+function startCameraMode() {
+  showPage('scanner');
+  setMode('camera');
+  startCamera();
+}
+
+// ═══════════════════════════════════════
+//  DEV MODE
+// ═══════════════════════════════════════
+function startDevMode() {
+  appMode = 'dev';
+  showPage('scanner');
+  document.getElementById('dev-flag').classList.add('show');
+  setMode('manual');
+  // Disable send button (will be done in showResult)
+}
+
+const PRESETS = {
+  a: '(01)04150003957991(17)261231(10)LOT-ABC-001(21)SN-9876543',
+  b: ']d201041500039579911726123110LOT-ABC-00121SN-9876543',
+  c: '(01)09501101530003(17)' + (() => {
+    const d = new Date(); d.setDate(d.getDate()+12);
+    return String(d.getFullYear()).slice(2)+String(d.getMonth()+1).padStart(2,'0')+String(d.getDate()).padStart(2,'0');
+  })() + '(10)BATCH2025(21)SN-SOON-001',
+  d: '(01)09501101530003(17)230615(10)OLDLOT(21)OLD-SN-999',
+};
+
+function setPreset(k) {
+  document.getElementById('manual-input').value = PRESETS[k] || '';
+}
+
+function processManual() {
+  const v = document.getElementById('manual-input').value.trim();
+  if (!v) { showToast('請輸入條碼', 'err'); return; }
+  onDetected(v);
+}
+
+// ═══════════════════════════════════════
+//  UI HELPERS
+// ═══════════════════════════════════════
+function showPage(id) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.getElementById('page-'+id).classList.add('active');
+}
+
+function setUserChip(profile) {
+  if (!profile) return;
+  document.getElementById('user-avatar').src = profile.pictureUrl || '';
+  document.getElementById('user-name').textContent = profile.displayName;
+  document.getElementById('user-pill').classList.add('show');
+}
+
+let _toastTimer;
+function showToast(msg, type='') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = `toast show ${type}`;
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => t.className = 'toast', 2600);
+}
+
+function loading(on) {
+  document.getElementById('loader').classList.toggle('on', on);
+}
+
+// Auto LIFF detect on load
+window.addEventListener('load', async () => {
+  if (typeof liff !== 'undefined' && LIFF_ID !== 'YOUR_LIFF_ID_HERE') {
+    try {
+      await liff.init({ liffId: LIFF_ID });
+      if (liff.isLoggedIn()) {
+        const profile = await liff.getProfile();
+        liffReady = true;
+        setUserChip(profile);
+        showPage('scanner');
+        setMode('camera');
+        startCamera();
+      }
+    } catch(e) {}
+  }
+});
+</script>
+</body>
+</html>
