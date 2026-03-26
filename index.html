@@ -103,6 +103,7 @@ body {
 
 .viewfinder {
   flex: 1; display: flex; align-items: center; justify-content: center;
+  position: relative;
 }
 
 .vf-box {
@@ -122,6 +123,14 @@ body {
 }
 
 @keyframes scan { 0% { top: 0; } 100% { top: 100%; } }
+
+/* 手動開啟相機按鈕 (當自動開啟失敗時) */
+#manual-camera-btn {
+    position: absolute;
+    pointer-events: all;
+    z-index: 10;
+    display: none;
+}
 
 .scan-footer {
   padding: 20px 20px 40px;
@@ -174,7 +183,7 @@ body {
     <button class="btn btn-outline" onclick="handleManualInput()">解析並預覽</button>
   </div>
 
-  <div class="version-tag">v1.1.0</div>
+  <div class="version-tag">v1.1.1</div>
 </div>
 
 <div class="page" id="page-scanner">
@@ -182,10 +191,12 @@ body {
   <div class="scan-overlay">
     <div class="scan-header">
         <div id="user-info" style="font-size: 14px;">載入中...</div>
-        <div class="engine-status" id="engine-status">初始化...</div>
+        <div class="engine-status" id="engine-status">等待指令...</div>
     </div>
     <div class="viewfinder">
       <div class="vf-box" id="vf-box"><div class="scan-line"></div></div>
+      <!-- 手動啟動相機 (確保 User Gesture) -->
+      <button class="btn btn-primary" id="manual-camera-btn" onclick="startCamera()">啟動掃描鏡頭</button>
     </div>
     <div class="scan-footer">
       <button class="btn btn-primary" onclick="liffScan()">使用 LINE 原生掃描器</button>
@@ -224,8 +235,9 @@ async function initLiff() {
       document.getElementById('user-info').innerText = profile.displayName;
       document.getElementById('page-auth').classList.remove('active');
       document.getElementById('page-scanner').classList.add('active');
-      // 確保 UI 切換後再啟動相機
-      setTimeout(startCamera, 300);
+      
+      // 先顯示按鈕供使用者點擊，確保符合瀏覽器安全性要求
+      document.getElementById('manual-camera-btn').style.display = 'block';
     }
   } catch (err) {
     console.error('LIFF Init Error:', err);
@@ -233,20 +245,23 @@ async function initLiff() {
   }
 }
 
-// 2. 啟動相機流程強化
+// 2. 啟動相機 (由使用者點擊觸發)
 async function startCamera() {
   const video = document.getElementById('camera-video');
   const statusEl = document.getElementById('engine-status');
+  const manualBtn = document.getElementById('manual-camera-btn');
   
+  manualBtn.style.display = 'none';
+
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
     statusEl.innerText = "環境不支援相機";
+    alert('請確保在 HTTPS 環境下使用，或檢查瀏覽器權限設定。');
     return;
   }
 
   try {
     statusEl.innerText = "正在請求相機...";
     
-    // 停止舊串流
     if (stream) {
       stream.getTracks().forEach(t => t.stop());
     }
@@ -261,12 +276,13 @@ async function startCamera() {
 
     video.srcObject = stream;
 
-    // 關鍵：等待元數據載入並播放
     statusEl.innerText = "正在啟動視訊...";
-    await new Promise((resolve) => {
-      video.onloadedmetadata = () => {
-        video.play().then(resolve);
-      };
+    await new Promise((resolve, reject) => {
+        video.onloadedmetadata = () => {
+            video.play().then(resolve).catch(reject);
+        };
+        // 逾時處理
+        setTimeout(() => reject(new Error("Video Load Timeout")), 5000);
     });
 
     statusEl.innerText = "視訊已就緒";
@@ -274,8 +290,9 @@ async function startCamera() {
 
   } catch (err) {
     console.error('Camera Access Error:', err);
-    statusEl.innerText = "權限遭拒或相機故障";
-    alert('無法開啟相機: ' + err.name);
+    statusEl.innerText = "啟動失敗: " + err.name;
+    manualBtn.style.display = 'block'; // 失敗後再次顯示按鈕
+    alert('無法開啟相機，請點擊按鈕重試或檢查設定。');
   }
 }
 
@@ -286,16 +303,21 @@ async function initZXing() {
 
   if (!window.ZXingBrowser) {
     statusEl.innerText = "載入解碼庫...";
-    await new Promise((resolve, reject) => {
-      const s = document.createElement('script');
-      s.src = 'https://unpkg.com/@zxing/browser@0.1.5/umd/index.min.js';
-      s.onload = resolve;
-      s.onerror = reject;
-      document.head.appendChild(s);
-    });
+    try {
+        await new Promise((resolve, reject) => {
+          const s = document.createElement('script');
+          s.src = 'https://unpkg.com/@zxing/browser@0.1.5/umd/index.min.js';
+          s.onload = resolve;
+          s.onerror = reject;
+          document.head.appendChild(s);
+        });
+    } catch(e) {
+        statusEl.innerText = "解碼庫載入失敗";
+        return;
+    }
   }
 
-  statusEl.innerText = "GS1 引擎啟動中...";
+  statusEl.innerText = "引擎搜尋中...";
 
   const hints = new Map();
   hints.set(2, true); // TRY_HARDER
@@ -304,27 +326,24 @@ async function initZXing() {
   
   try {
     codeReader = new ZXingBrowser.BrowserMultiFormatReader(hints);
-    statusEl.innerText = "請將條碼對準綠框";
+    statusEl.innerText = "請對準 GS1 條碼";
     
-    codeReader.decodeFromVideoElement(video, (result, error) => {
+    codeReader.decodeFromVideoElement(video, (result) => {
       if (result && isScanning) {
           handleDetection(result.getText());
       }
     });
   } catch (err) {
     console.error('Decoder Start Error:', err);
-    statusEl.innerText = "解碼器啟動失敗";
+    statusEl.innerText = "引擎初始化失敗";
   }
 }
 
-// 4. 其他功能
+// 4. 解析與 UI 邏輯
 function handleManualInput() {
   const inputEl = document.getElementById('manual-gs1-input');
   const val = inputEl.value.trim();
-  if (!val) {
-    alert('請輸入 GS1 字串');
-    return;
-  }
+  if (!val) { alert('請輸入 GS1 字串'); return; }
   handleDetection(val);
 }
 
@@ -377,9 +396,7 @@ function parseGS1(raw) {
                     data.batch = sub.substring(0, fnc1Idx);
                     i += (2 + fnc1Idx + 1);
                 }
-            } else {
-                i++;
-            }
+            } else { i++; }
         }
     }
     return data;
@@ -404,9 +421,8 @@ function handleDetection(raw) {
     <div class="data-row"><span class="data-label">有效日期</span><span class="data-value">${currentData.expiry || '未辨識'}</span></div>
   `;
   
-  document.getElementById('raw-data-debug').innerText = `解析內容: ${raw}`;
+  document.getElementById('raw-data-debug').innerText = `內容: ${raw}`;
   document.getElementById('result-sheet').classList.add('open');
-  
   if (navigator.vibrate) navigator.vibrate(100);
 }
 
@@ -416,10 +432,7 @@ function closeResult() {
 }
 
 function backToHome() {
-    if (stream) {
-        stream.getTracks().forEach(track => track.stop());
-        stream = null;
-    }
+    if (stream) { stream.getTracks().forEach(track => track.stop()); stream = null; }
     document.getElementById('page-scanner').classList.remove('active');
     document.getElementById('page-auth').classList.add('active');
 }
@@ -429,37 +442,19 @@ async function sendToLine() {
   if (!liff.isLoggedIn()) { alert("請登入 LINE。"); return; }
 
   const flex = {
-    type: "bubble",
-    size: "mega",
-    header: { 
-      type: "box", layout: "vertical", backgroundColor: "#06C755", 
-      contents: [{ type: "text", text: "📦 GS1 掃描結果", color: "#ffffff", weight: "bold", size: "sm" }] 
-    },
+    type: "bubble", size: "mega",
+    header: { type: "box", layout: "vertical", backgroundColor: "#06C755", contents: [{ type: "text", text: "📦 GS1 掃描結果", color: "#ffffff", weight: "bold", size: "sm" }] },
     body: {
       type: "box", layout: "vertical", spacing: "lg",
       contents: [
-        { type: "box", layout: "vertical", contents: [
-            { type: "text", text: "GTIN", color: "#aaaaaa", size: "xs" },
-            { type: "text", text: currentData.gtin || "—", size: "md", weight: "bold", wrap: true }
-        ]},
-        { type: "box", layout: "vertical", contents: [
-            { type: "text", text: "批號 (Batch)", color: "#aaaaaa", size: "xs" },
-            { type: "text", text: currentData.batch || "—", size: "md", weight: "bold", wrap: true }
-        ]},
-        { type: "box", layout: "vertical", contents: [
-            { type: "text", text: "有效日期", color: "#aaaaaa", size: "xs" },
-            { type: "text", text: currentData.expiry || "—", size: "md", weight: "bold", wrap: true }
-        ]}
+        { type: "box", layout: "vertical", contents: [{ type: "text", text: "GTIN", color: "#aaaaaa", size: "xs" }, { type: "text", text: currentData.gtin || "—", size: "md", weight: "bold", wrap: true }] },
+        { type: "box", layout: "vertical", contents: [{ type: "text", text: "批號 (Batch)", color: "#aaaaaa", size: "xs" }, { type: "text", text: currentData.batch || "—", size: "md", weight: "bold", wrap: true }] },
+        { type: "box", layout: "vertical", contents: [{ type: "text", text: "有效日期", color: "#aaaaaa", size: "xs" }, { type: "text", text: currentData.expiry || "—", size: "md", weight: "bold", wrap: true }] }
       ]
     }
   };
-
-  try {
-    await liff.sendMessages([{ type: "flex", altText: "GS1 掃描結果", contents: flex }]);
-    liff.closeWindow();
-  } catch (err) {
-    alert("發送失敗: " + err);
-  }
+  try { await liff.sendMessages([{ type: "flex", altText: "GS1 掃描結果", contents: flex }]); liff.closeWindow(); }
+  catch (err) { alert("發送失敗: " + err); }
 }
 
 window.onload = () => {
@@ -469,7 +464,8 @@ window.onload = () => {
                 document.getElementById('user-info').innerText = profile.displayName;
                 document.getElementById('page-auth').classList.remove('active');
                 document.getElementById('page-scanner').classList.add('active');
-                setTimeout(startCamera, 300);
+                // 顯示按鈕，讓使用者點擊以啟動相機
+                document.getElementById('manual-camera-btn').style.display = 'block';
             });
         }
     });
