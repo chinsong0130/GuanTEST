@@ -133,7 +133,7 @@ html,body{height:100%;background:var(--black);color:var(--text);font-family:'Syn
   <div style="width:100%;max-width:320px">
     <button class="btn btn-outline" onclick="handleManualInput()">解析並預覽</button>
   </div>
-  <div class="ver">v3.0.0 — debug build</div>
+  <div class="ver">v3.1.0 — flex fix · debug build</div>
 </div>
 
 <!-- Scanner Page -->
@@ -485,25 +485,45 @@ async function sendToLine() {
   let li=false; try{ li=liff.isLoggedIn(); }catch(e){}
   if(!li){ toast('請先登入 LINE'); return; }
   const d=currentData;
-  const flex={type:'bubble',size:'mega',
-    header:{type:'box',layout:'vertical',backgroundColor:'#06C755',paddingAll:'16px',
-      contents:[{type:'text',text:'📦 GS1 掃描結果',color:'#fff',weight:'bold',size:'sm'}]},
-    body:{type:'box',layout:'vertical',spacing:'md',contents:[
-      mkR('GTIN（產品碼）',d.gtin||'—'),
-      mkR('批號 Batch/Lot',d.batch||'—'),
-      mkR('有效日期 Expiry',d.expiry||'—'),
-    ]}
+  const flex={
+    type:'bubble',
+    size:'mega',
+    // ✅ backgroundColor 必須放在 styles，不能放在 box 屬性裡
+    styles:{
+      header:{ backgroundColor:'#06C755' }
+    },
+    header:{
+      type:'box', layout:'vertical', paddingAll:'16px',
+      contents:[{type:'text', text:'📦 GS1 掃描結果', color:'#ffffff', weight:'bold', size:'sm'}]
+    },
+    body:{
+      type:'box', layout:'vertical', spacing:'md', paddingAll:'16px',
+      contents:[
+        mkR('GTIN（產品碼）', d.gtin  ||'—'),
+        mkR('批號 Batch/Lot', d.batch ||'—'),
+        mkR('有效日期 Expiry', d.expiry||'—'),
+      ]
+    }
   };
+  clog('flex payload: '+JSON.stringify(flex));
   try {
-    await liff.sendMessages([{type:'flex',altText:'GS1 掃描結果',contents:flex}]);
+    await liff.sendMessages([{type:'flex', altText:'GS1 掃描結果', contents:flex}]);
     clog('sendMessages OK'); liff.closeWindow();
   } catch(e){ cerr('sendMessages ERR: '+e.message); toast('傳送失敗: '+e.message); }
 }
-function mkR(l,v){ return {type:'box',layout:'vertical',spacing:'xs',contents:[{type:'text',text:l,color:'#aaa',size:'xs'},{type:'text',text:v,size:'md',weight:'bold',wrap:true}]}; }
+function mkR(label, value){
+  return {
+    type:'box', layout:'vertical', spacing:'xs',
+    contents:[
+      {type:'text', text:label, color:'#aaaaaa', size:'xs'},
+      {type:'text', text:value, size:'md', weight:'bold', wrap:true}
+    ]
+  };
+}
 
 /* ===== Boot ===== */
 window.addEventListener('load', async () => {
-  clog('=== GS1 Scanner v3.0 boot ===');
+  clog('=== GS1 Scanner v3.1 boot ===');
   clog('UA: ' + navigator.userAgent.slice(0,120));
   clog('protocol: ' + location.protocol);
   clog('ZXingBrowser: ' + (typeof ZXingBrowser));
