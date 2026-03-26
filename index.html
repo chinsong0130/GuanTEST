@@ -124,7 +124,6 @@ body {
 
 @keyframes scan { 0% { top: 0; } 100% { top: 100%; } }
 
-/* 手動開啟相機按鈕 (當自動開啟失敗時) */
 #manual-camera-btn {
     position: absolute;
     pointer-events: all;
@@ -183,7 +182,7 @@ body {
     <button class="btn btn-outline" onclick="handleManualInput()">解析並預覽</button>
   </div>
 
-  <div class="version-tag">v1.1.1</div>
+  <div class="version-tag">v1.1.2</div>
 </div>
 
 <div class="page" id="page-scanner">
@@ -195,7 +194,6 @@ body {
     </div>
     <div class="viewfinder">
       <div class="vf-box" id="vf-box"><div class="scan-line"></div></div>
-      <!-- 手動啟動相機 (確保 User Gesture) -->
       <button class="btn btn-primary" id="manual-camera-btn" onclick="startCamera()">啟動掃描鏡頭</button>
     </div>
     <div class="scan-footer">
@@ -224,7 +222,6 @@ let codeReader = null;
 let isScanning = true;
 let stream = null;
 
-// 1. 初始化 LIFF
 async function initLiff() {
   try {
     await liff.init({ liffId: LIFF_ID });
@@ -235,8 +232,6 @@ async function initLiff() {
       document.getElementById('user-info').innerText = profile.displayName;
       document.getElementById('page-auth').classList.remove('active');
       document.getElementById('page-scanner').classList.add('active');
-      
-      // 先顯示按鈕供使用者點擊，確保符合瀏覽器安全性要求
       document.getElementById('manual-camera-btn').style.display = 'block';
     }
   } catch (err) {
@@ -245,7 +240,6 @@ async function initLiff() {
   }
 }
 
-// 2. 啟動相機 (由使用者點擊觸發)
 async function startCamera() {
   const video = document.getElementById('camera-video');
   const statusEl = document.getElementById('engine-status');
@@ -255,16 +249,13 @@ async function startCamera() {
 
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
     statusEl.innerText = "環境不支援相機";
-    alert('請確保在 HTTPS 環境下使用，或檢查瀏覽器權限設定。');
+    alert('請確保在 HTTPS 環境下使用。');
     return;
   }
 
   try {
     statusEl.innerText = "正在請求相機...";
-    
-    if (stream) {
-      stream.getTracks().forEach(t => t.stop());
-    }
+    if (stream) stream.getTracks().forEach(t => t.stop());
 
     stream = await navigator.mediaDevices.getUserMedia({
       video: {
@@ -275,13 +266,11 @@ async function startCamera() {
     });
 
     video.srcObject = stream;
-
     statusEl.innerText = "正在啟動視訊...";
     await new Promise((resolve, reject) => {
         video.onloadedmetadata = () => {
             video.play().then(resolve).catch(reject);
         };
-        // 逾時處理
         setTimeout(() => reject(new Error("Video Load Timeout")), 5000);
     });
 
@@ -291,22 +280,22 @@ async function startCamera() {
   } catch (err) {
     console.error('Camera Access Error:', err);
     statusEl.innerText = "啟動失敗: " + err.name;
-    manualBtn.style.display = 'block'; // 失敗後再次顯示按鈕
-    alert('無法開啟相機，請點擊按鈕重試或檢查設定。');
+    manualBtn.style.display = 'block';
+    alert('無法開啟相機，請檢查權限。');
   }
 }
 
-// 3. 初始化解碼引擎
 async function initZXing() {
   const statusEl = document.getElementById('engine-status');
   const video = document.getElementById('camera-video');
 
-  if (!window.ZXingBrowser) {
+  if (!window.ZXing) {
     statusEl.innerText = "載入解碼庫...";
     try {
         await new Promise((resolve, reject) => {
           const s = document.createElement('script');
-          s.src = 'https://unpkg.com/@zxing/browser@0.1.5/umd/index.min.js';
+          // 使用更可靠的套件網址
+          s.src = 'https://unpkg.com/@zxing/library@latest';
           s.onload = resolve;
           s.onerror = reject;
           document.head.appendChild(s);
@@ -320,12 +309,16 @@ async function initZXing() {
   statusEl.innerText = "引擎搜尋中...";
 
   const hints = new Map();
-  hints.set(2, true); // TRY_HARDER
-  hints.set(3, [4, 5, 11]); // Code 128, DataMatrix, QR
-  hints.set(9, true); // ASSUME_GS1
+  hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
+  hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [
+    ZXing.BarcodeFormat.CODE_128,
+    ZXing.BarcodeFormat.DATA_MATRIX,
+    ZXing.BarcodeFormat.QR_CODE
+  ]);
+  hints.set(ZXing.DecodeHintType.ASSUME_GS1, true);
   
   try {
-    codeReader = new ZXingBrowser.BrowserMultiFormatReader(hints);
+    codeReader = new ZXing.BrowserMultiFormatReader(hints);
     statusEl.innerText = "請對準 GS1 條碼";
     
     codeReader.decodeFromVideoElement(video, (result) => {
@@ -339,7 +332,6 @@ async function initZXing() {
   }
 }
 
-// 4. 解析與 UI 邏輯
 function handleManualInput() {
   const inputEl = document.getElementById('manual-gs1-input');
   const val = inputEl.value.trim();
@@ -464,7 +456,6 @@ window.onload = () => {
                 document.getElementById('user-info').innerText = profile.displayName;
                 document.getElementById('page-auth').classList.remove('active');
                 document.getElementById('page-scanner').classList.add('active');
-                // 顯示按鈕，讓使用者點擊以啟動相機
                 document.getElementById('manual-camera-btn').style.display = 'block';
             });
         }
