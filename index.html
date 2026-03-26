@@ -12,20 +12,6 @@
   --green: #06C755;
   --black: #080808;
   --surface: #141414;
-  --border: rgba(255,255,255,0.1);<!DOCTYPE html>
-<html lang="zh-Hant">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>GS1 產品掃描器 (LIFF)</title>
-<script src="https://static.line-scdn.net/liff/edge/versions/2.22.3/sdk.js"></script>
-<style>
-@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Noto+Sans+TC:wght@400;500;700&display=swap');
-
-:root {
-  --green: #06C755;
-  --black: #080808;
-  --surface: #141414;
   --surface2: #1c1c1c;
   --border: rgba(255,255,255,0.1);
   --text: #EFEFEF;
@@ -179,7 +165,7 @@ body {
     <button class="btn btn-outline" onclick="handleManualInput()">解析並預覽</button>
   </div>
 
-  <div class="version-tag">v1.0.7</div>
+  <div class="version-tag">v1.0.8</div>
 </div>
 
 <div class="page" id="page-scanner">
@@ -237,7 +223,7 @@ async function initLiff() {
   }
 }
 
-// 2. 啟動相機
+// 2. 啟動相機 (專為 GS1 最佳化)
 async function startCamera() {
   const video = document.getElementById('camera-video');
   const statusEl = document.getElementById('engine-status');
@@ -252,10 +238,18 @@ async function startCamera() {
     });
   }
 
-  statusEl.innerText = "引擎已啟動";
+  statusEl.innerText = "GS1 引擎已啟動";
+
+  /**
+   * 設定 ZXing 解碼提示 (Hints)
+   * 2: TRY_HARDER - 進行更深度的影像運算
+   * 3: POSSIBLE_FORMATS - 限制掃描格式提升效率 (4: Code 128, 5: DataMatrix, 11: QR Code)
+   * 9: ASSUME_GS1 - 強制解碼器尋找 GS1 結構
+   */
   const hints = new Map();
-  hints.set(2, true); // TRY_HARDER
-  hints.set(9, true); // ASSUME_GS1
+  hints.set(2, true); 
+  hints.set(3, [4, 5, 11]); 
+  hints.set(9, true); 
   
   codeReader = new ZXingBrowser.BrowserMultiFormatReader(hints);
   
@@ -301,7 +295,7 @@ async function liffScan() {
   }
 }
 
-// 5. 解析 GS1 (移除 AI 21 序號)
+// 5. 解析 GS1
 function parseGS1(raw) {
     const data = { gtin: null, batch: null, expiry: null };
     let clean = raw.trim().replace(/^\](C1|d2|e0|Q3)/, "");
@@ -390,7 +384,6 @@ function backToHome() {
 async function sendToLine() {
   if (!currentData) return;
   
-  // 檢查是否已登入 (手動輸入可能在未登入狀態)
   if (!liff.isLoggedIn()) {
       alert("請先完成 LINE 登入後再發送。");
       initLiff();
@@ -445,323 +438,6 @@ window.onload = () => {
         }
     });
 };
-</script>
-</body>
-</html>
-  --text: #EFEFEF;
-  --muted: #777;
-}
-
-* { box-sizing: border-box; margin: 0; padding: 0; }
-
-body {
-  height: 100%;
-  background: var(--black);
-  color: var(--text);
-  font-family: 'Noto Sans TC', sans-serif;
-  overflow: hidden;
-}
-
-.page { position: fixed; inset: 0; display: none; flex-direction: column; }
-.page.active { display: flex; }
-
-/* Auth Page */
-#page-auth { align-items: center; justify-content: center; padding: 40px; text-align: center; }
-
-/* Scanner Page */
-#page-scanner { background: #000; }
-#camera-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
-
-.scan-overlay {
-  position: absolute; inset: 0;
-  display: flex; flex-direction: column;
-  pointer-events: none;
-}
-
-.scan-header {
-  padding: 50px 20px 20px;
-  background: linear-gradient(to bottom, rgba(0,0,0,0.8), transparent);
-  pointer-events: all;
-}
-
-.viewfinder {
-  flex: 1; display: flex; align-items: center; justify-content: center;
-}
-
-/* 針對長條型一維條碼優化取景框 */
-.vf-box {
-  width: 90%;
-  height: 160px;
-  border: 2px solid var(--green);
-  position: relative;
-  box-shadow: 0 0 0 5000px rgba(0,0,0,0.6);
-  transition: all 0.3s;
-}
-
-.scan-line {
-  position: absolute; width: 100%; height: 2px;
-  background: var(--green);
-  box-shadow: 0 0 10px var(--green);
-  animation: scan 2s linear infinite;
-}
-
-@keyframes scan { 0% { top: 0; } 100% { top: 100%; } }
-
-.scan-footer {
-  padding: 20px 20px 40px;
-  background: linear-gradient(to top, rgba(0,0,0,0.8), transparent);
-  pointer-events: all;
-}
-
-/* Result Sheet */
-.sheet {
-  position: fixed; inset: 0; background: rgba(0,0,0,0.8);
-  display: none; align-items: flex-end; z-index: 100;
-}
-.sheet.open { display: flex; }
-.sheet-content {
-  width: 100%; background: var(--surface);
-  border-radius: 20px 20px 0 0; padding: 25px;
-  max-height: 80vh; overflow-y: auto;
-}
-
-.data-row { display: flex; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid var(--border); }
-.data-label { color: var(--muted); font-size: 14px; }
-.data-value { font-family: 'DM Mono', monospace; color: var(--green); font-weight: 500; text-align: right; word-break: break-all; margin-left: 10px; }
-
-.btn {
-  width: 100%; padding: 16px; border-radius: 12px; border: none;
-  font-size: 16px; font-weight: bold; cursor: pointer;
-}
-.btn-primary { background: var(--green); color: #000; }
-.btn-secondary { background: #333; color: #fff; margin-top: 10px; }
-
-.debug-info {
-    font-size: 10px; color: #555; word-break: break-all; margin-top: 15px; font-family: monospace;
-    border-top: 1px solid #222; padding-top: 10px;
-}
-</style>
-</head>
-<body>
-
-<div class="page active" id="page-auth">
-  <h1 style="margin-bottom: 10px;">GS1 Scanner</h1>
-  <p style="color: var(--muted); margin-bottom: 30px;">需登入 LINE 帳號後開始掃描</p>
-  <button class="btn btn-primary" onclick="initLiff()">以 LINE 帳號登入</button>
-</div>
-
-<div class="page" id="page-scanner">
-  <video id="camera-video" playsinline></video>
-  <div class="scan-overlay">
-    <div class="scan-header">
-        <div id="user-info" style="font-size: 14px;">載入中...</div>
-    </div>
-    <div class="viewfinder">
-      <div class="vf-box" id="vf-box"><div class="scan-line"></div></div>
-    </div>
-    <div class="scan-footer">
-      <button class="btn btn-primary" onclick="liffScan()">使用 LINE 原生掃描器</button>
-      <p style="text-align:center; font-size: 12px; color: #888; margin-top: 15px;">請將條碼水平對準綠色框線</p>
-    </div>
-  </div>
-</div>
-
-<div class="sheet" id="result-sheet">
-  <div class="sheet-content">
-    <h2 style="margin-bottom: 20px;">掃描結果</h2>
-    <div id="result-list"></div>
-    <div class="debug-info" id="raw-data-debug"></div>
-    <div style="margin-top: 30px;">
-      <button class="btn btn-primary" onclick="sendToLine()">發送至聊天室</button>
-      <button class="btn btn-secondary" onclick="closeResult()">繼續掃描</button>
-    </div>
-  </div>
-</div>
-
-<script>
-const LIFF_ID = '2009550177-uiMwrJEn'; 
-let currentData = null;
-let codeReader = null;
-let isScanning = true;
-
-async function initLiff() {
-  try {
-    await liff.init({ liffId: LIFF_ID });
-    if (!liff.isLoggedIn()) {
-      liff.login();
-    } else {
-      const profile = await liff.getProfile();
-      document.getElementById('user-info').innerText = `使用者: ${profile.displayName}`;
-      document.getElementById('page-auth').classList.remove('active');
-      document.getElementById('page-scanner').classList.add('active');
-      startCamera();
-    }
-  } catch (err) {
-    console.error('LIFF Init Error:', err);
-  }
-}
-
-async function startCamera() {
-  const video = document.getElementById('camera-video');
-  
-  if (!window.ZXingBrowser) {
-    await new Promise(r => {
-      const s = document.createElement('script');
-      s.src = 'https://unpkg.com/@zxing/browser@0.1.5/umd/index.min.js';
-      s.onload = r;
-      document.head.appendChild(s);
-    });
-  }
-
-  // 強力解碼模式與針對一維條碼的優化
-  const hints = new Map();
-  hints.set(2, true); // TRY_HARDER
-  hints.set(9, true); // ASSUME_GS1
-  
-  codeReader = new ZXingBrowser.BrowserMultiFormatReader(hints);
-  
-  const constraints = {
-    video: {
-      facingMode: "environment",
-      width: { ideal: 1920 },
-      height: { ideal: 1080 },
-      focusMode: "continuous"
-    }
-  };
-
-  try {
-    codeReader.decodeFromConstraints(constraints, video, (result, error) => {
-      if (result && isScanning) {
-        handleDetection(result.getText());
-      }
-    });
-  } catch (err) {
-    console.error('Camera Access Error:', err);
-    alert('無法啟動相機，請檢查權限。');
-  }
-}
-
-async function liffScan() {
-  try {
-    const result = await liff.scanCodeV2();
-    if (result.value) handleDetection(result.value);
-  } catch (err) {
-    console.error('LIFF Scan Error:', err);
-  }
-}
-
-/**
- * GS1 解析器優化
- * 針對照片中的 (01)GTIN(17)YYMMDD(10)LOT(20)VARIANT 格式
- */
-function parseGS1(raw) {
-    const data = { gtin: null, batch: null, expiry: null };
-    let clean = raw.trim().replace(/^\](C1|d2|e0|Q3)/, "");
-
-    // 情況 A: 帶括號格式 (如 (01)0076...)
-    if (clean.includes('(')) {
-        const matches = clean.matchAll(/\((\d{2,3})\)([^()]+)/g);
-        for (const match of matches) {
-            const ai = match[1];
-            const val = match[2].trim();
-            if (ai === '01' || ai === '02') data.gtin = val;
-            if (ai === '10') data.batch = val;
-            if (ai === '17') data.expiry = formatGS1Date(val);
-        }
-    } 
-    // 情況 B: 原始字串格式 (如 0100763000655068172705221000128301182001)
-    else {
-        let i = 0;
-        while (i < clean.length) {
-            const ai2 = clean.substr(i, 2);
-            if (ai2 === '01' || ai2 === '02') {
-                data.gtin = clean.substr(i + 2, 14);
-                i += 16;
-            } else if (ai2 === '17') {
-                data.expiry = formatGS1Date(clean.substr(i + 2, 6));
-                i += 8;
-            } else if (ai2 === '10') {
-                // AI 10 是變動長度。這裡尋找可能的下一個 AI 或是到結尾
-                // 常見結尾可能是 FNC1 (\x1D)
-                let sub = clean.substr(i + 2);
-                let fnc1Idx = sub.indexOf('\x1D');
-                if (fnc1Idx === -1) {
-                    // 如果沒有 FNC1，則嘗試尋找下一個可能的 AI (如 21, 20)
-                    // 這在沒有分隔符的情況下是 GS1 解析的難點
-                    // 針對上圖，我們知道最後有 (20)01，所以找 20
-                    let nextAIIdx = sub.indexOf('20'); 
-                    if (nextAIIdx !== -1) {
-                        data.batch = sub.substring(0, nextAIIdx);
-                        i = clean.length; // 結束解析
-                    } else {
-                        data.batch = sub;
-                        i = clean.length;
-                    }
-                } else {
-                    data.batch = sub.substring(0, fnc1Idx);
-                    i += (2 + fnc1Idx + 1);
-                }
-            } else {
-                i++; // 跳過未知字元
-            }
-        }
-    }
-    return data;
-}
-
-function formatGS1Date(s) {
-    if (!s || s.length < 6) return s;
-    const y = "20" + s.substr(0, 2);
-    const m = s.substr(2, 2);
-    const d = s.substr(4, 2);
-    return `${y}-${m}-${d}`;
-}
-
-function handleDetection(raw) {
-  isScanning = false;
-  currentData = parseGS1(raw);
-  
-  const list = document.getElementById('result-list');
-  list.innerHTML = `
-    <div class="data-row"><span class="data-label">GTIN (產品碼)</span><span class="data-value">${currentData.gtin || '未辨識'}</span></div>
-    <div class="data-row"><span class="data-label">批號 (Batch)</span><span class="data-value">${currentData.batch || '未辨識'}</span></div>
-    <div class="data-row"><span class="data-label">有效日期</span><span class="data-value">${currentData.expiry || '未辨識'}</span></div>
-  `;
-  
-  document.getElementById('raw-data-debug').innerText = `條碼原始內容: ${raw}`;
-  document.getElementById('result-sheet').classList.add('open');
-  
-  if (navigator.vibrate) navigator.vibrate(100);
-}
-
-function closeResult() {
-  document.getElementById('result-sheet').classList.remove('open');
-  setTimeout(() => { isScanning = true; }, 500);
-}
-
-async function sendToLine() {
-  if (!currentData) return;
-  
-  const flex = {
-    type: "bubble",
-    size: "kilo",
-    header: { type: "box", layout: "vertical", backgroundColor: "#06C755", contents: [{ type: "text", text: "📦 GS1 掃描結果", color: "#ffffff", weight: "bold", size: "sm" }] },
-    body: {
-      type: "box", layout: "vertical", spacing: "md", contents: [
-        { type: "box", layout: "horizontal", contents: [{ type: "text", text: "GTIN", color: "#aaaaaa", size: "sm" }, { type: "text", text: currentData.gtin || "—", align: "end", size: "sm", weight: "bold" }] },
-        { type: "box", layout: "horizontal", contents: [{ type: "text", text: "批號", color: "#aaaaaa", size: "sm" }, { type: "text", text: currentData.batch || "—", align: "end", size: "sm", weight: "bold" }] },
-        { type: "box", layout: "horizontal", contents: [{ type: "text", text: "效期", color: "#aaaaaa", size: "sm" }, { type: "text", text: currentData.expiry || "—", align: "end", size: "sm", weight: "bold" }] }
-      ]
-    }
-  };
-
-  try {
-    await liff.sendMessages([{ type: "flex", altText: "GS1 掃描結果", contents: flex }]);
-    liff.closeWindow();
-  } catch (err) {
-    alert("發送失敗: " + err);
-  }
-}
 </script>
 </body>
 </html>
