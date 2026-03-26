@@ -53,13 +53,13 @@ body {
   flex: 1; display: flex; align-items: center; justify-content: center;
 }
 
-/* 調整取景框比例，更適合長條形 Barcode */
+/* 針對長條型一維條碼優化取景框 */
 .vf-box {
-  width: 80%;
-  height: 200px;
+  width: 90%;
+  height: 160px;
   border: 2px solid var(--green);
   position: relative;
-  box-shadow: 0 0 0 5000px rgba(0,0,0,0.5);
+  box-shadow: 0 0 0 5000px rgba(0,0,0,0.6);
   transition: all 0.3s;
 }
 
@@ -92,7 +92,7 @@ body {
 
 .data-row { display: flex; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid var(--border); }
 .data-label { color: var(--muted); font-size: 14px; }
-.data-value { font-family: 'DM Mono', monospace; color: var(--green); font-weight: 500; }
+.data-value { font-family: 'DM Mono', monospace; color: var(--green); font-weight: 500; text-align: right; word-break: break-all; margin-left: 10px; }
 
 .btn {
   width: 100%; padding: 16px; border-radius: 12px; border: none;
@@ -102,7 +102,8 @@ body {
 .btn-secondary { background: #333; color: #fff; margin-top: 10px; }
 
 .debug-info {
-    font-size: 10px; color: #555; word-break: break-all; margin-top: 10px; font-family: monospace;
+    font-size: 10px; color: #555; word-break: break-all; margin-top: 15px; font-family: monospace;
+    border-top: 1px solid #222; padding-top: 10px;
 }
 </style>
 </head>
@@ -125,7 +126,7 @@ body {
     </div>
     <div class="scan-footer">
       <button class="btn btn-primary" onclick="liffScan()">使用 LINE 原生掃描器</button>
-      <p style="text-align:center; font-size: 12px; color: #888; margin-top: 15px;">支援 GS1-128, DataMatrix, QR</p>
+      <p style="text-align:center; font-size: 12px; color: #888; margin-top: 15px;">請將條碼水平對準綠色框線</p>
     </div>
   </div>
 </div>
@@ -147,7 +148,6 @@ const LIFF_ID = '2009550177-uiMwrJEn';
 let currentData = null;
 let codeReader = null;
 let isScanning = true;
-let videoTrack = null;
 
 async function initLiff() {
   try {
@@ -178,10 +178,10 @@ async function startCamera() {
     });
   }
 
-  // 設定高品質相機參數與解碼格式
+  // 強力解碼模式與針對一維條碼的優化
   const hints = new Map();
-  // TRY_HARDER = 2, ASSUME_GS1 = 9
-  hints.set(2, true); 
+  hints.set(2, true); // TRY_HARDER
+  hints.set(9, true); // ASSUME_GS1
   
   codeReader = new ZXingBrowser.BrowserMultiFormatReader(hints);
   
@@ -195,7 +195,6 @@ async function startCamera() {
   };
 
   try {
-    // 使用 decodeFromConstraints 獲得更好的控制
     codeReader.decodeFromConstraints(constraints, video, (result, error) => {
       if (result && isScanning) {
         handleDetection(result.getText());
@@ -203,7 +202,7 @@ async function startCamera() {
     });
   } catch (err) {
     console.error('Camera Access Error:', err);
-    alert('無法啟動相機，請檢查權限設定。');
+    alert('無法啟動相機，請檢查權限。');
   }
 }
 
@@ -216,39 +215,59 @@ async function liffScan() {
   }
 }
 
+/**
+ * GS1 解析器優化
+ * 針對照片中的 (01)GTIN(17)YYMMDD(10)LOT(20)VARIANT 格式
+ */
 function parseGS1(raw) {
     const data = { gtin: null, batch: null, expiry: null };
-    let clean = raw.trim();
-    
-    // 移除常見的傳輸識別碼 (AIM Identifiers)
-    // ]C1 = GS1-128, ]d2 = GS1 DataMatrix
-    clean = clean.replace(/^\](C1|d2|e0|Q3)/, "");
+    let clean = raw.trim().replace(/^\](C1|d2|e0|Q3)/, "");
 
+    // 情況 A: 帶括號格式 (如 (01)0076...)
     if (clean.includes('(')) {
-        // 處理括號格式 (01)0471...
         const matches = clean.matchAll(/\((\d{2,3})\)([^()]+)/g);
         for (const match of matches) {
             const ai = match[1];
-            const val = match[2];
+            const val = match[2].trim();
             if (ai === '01' || ai === '02') data.gtin = val;
             if (ai === '10') data.batch = val;
             if (ai === '17') data.expiry = formatGS1Date(val);
         }
-    } else {
-        // 處理連續字串格式
-        // GS1 規範：01 開頭固定 14 位，17 固定 6 位
-        if (clean.startsWith('01')) {
-            data.gtin = clean.substr(2, 14);
-            let rest = clean.substr(16);
-            
-            // 嘗試尋找 17 (效期)
-            if (rest.startsWith('17')) {
-                data.expiry = formatGS1Date(rest.substr(2, 6));
-                let afterExpiry = rest.substr(8);
-                if (afterExpiry.startsWith('10')) data.batch = afterExpiry.substr(2);
-            } else if (rest.startsWith('10')) {
-                // 如果 16 位後直接是 10 (批號)
-                data.batch = rest.substr(2);
+    } 
+    // 情況 B: 原始字串格式 (如 0100763000655068172705221000128301182001)
+    else {
+        let i = 0;
+        while (i < clean.length) {
+            const ai2 = clean.substr(i, 2);
+            if (ai2 === '01' || ai2 === '02') {
+                data.gtin = clean.substr(i + 2, 14);
+                i += 16;
+            } else if (ai2 === '17') {
+                data.expiry = formatGS1Date(clean.substr(i + 2, 6));
+                i += 8;
+            } else if (ai2 === '10') {
+                // AI 10 是變動長度。這裡尋找可能的下一個 AI 或是到結尾
+                // 常見結尾可能是 FNC1 (\x1D)
+                let sub = clean.substr(i + 2);
+                let fnc1Idx = sub.indexOf('\x1D');
+                if (fnc1Idx === -1) {
+                    // 如果沒有 FNC1，則嘗試尋找下一個可能的 AI (如 21, 20)
+                    // 這在沒有分隔符的情況下是 GS1 解析的難點
+                    // 針對上圖，我們知道最後有 (20)01，所以找 20
+                    let nextAIIdx = sub.indexOf('20'); 
+                    if (nextAIIdx !== -1) {
+                        data.batch = sub.substring(0, nextAIIdx);
+                        i = clean.length; // 結束解析
+                    } else {
+                        data.batch = sub;
+                        i = clean.length;
+                    }
+                } else {
+                    data.batch = sub.substring(0, fnc1Idx);
+                    i += (2 + fnc1Idx + 1);
+                }
+            } else {
+                i++; // 跳過未知字元
             }
         }
     }
@@ -274,7 +293,7 @@ function handleDetection(raw) {
     <div class="data-row"><span class="data-label">有效日期</span><span class="data-value">${currentData.expiry || '未辨識'}</span></div>
   `;
   
-  document.getElementById('raw-data-debug').innerText = `Raw: ${raw}`;
+  document.getElementById('raw-data-debug').innerText = `條碼原始內容: ${raw}`;
   document.getElementById('result-sheet').classList.add('open');
   
   if (navigator.vibrate) navigator.vibrate(100);
