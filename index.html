@@ -15,7 +15,6 @@
   --border: rgba(255,255,255,0.1);
   --text: #EFEFEF;
   --muted: #777;
-  --red: #FF4444;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -54,11 +53,14 @@ body {
   flex: 1; display: flex; align-items: center; justify-content: center;
 }
 
+/* 調整取景框比例，更適合長條形 Barcode */
 .vf-box {
-  width: 260px; height: 260px;
+  width: 80%;
+  height: 200px;
   border: 2px solid var(--green);
   position: relative;
   box-shadow: 0 0 0 5000px rgba(0,0,0,0.5);
+  transition: all 0.3s;
 }
 
 .scan-line {
@@ -95,7 +97,6 @@ body {
 .btn {
   width: 100%; padding: 16px; border-radius: 12px; border: none;
   font-size: 16px; font-weight: bold; cursor: pointer;
-  transition: opacity 0.2s;
 }
 .btn-primary { background: var(--green); color: #000; }
 .btn-secondary { background: #333; color: #fff; margin-top: 10px; }
@@ -107,14 +108,12 @@ body {
 </head>
 <body>
 
-<!-- 登入頁 -->
 <div class="page active" id="page-auth">
   <h1 style="margin-bottom: 10px;">GS1 Scanner</h1>
   <p style="color: var(--muted); margin-bottom: 30px;">需登入 LINE 帳號後開始掃描</p>
   <button class="btn btn-primary" onclick="initLiff()">以 LINE 帳號登入</button>
 </div>
 
-<!-- 掃描頁 -->
 <div class="page" id="page-scanner">
   <video id="camera-video" playsinline></video>
   <div class="scan-overlay">
@@ -122,16 +121,15 @@ body {
         <div id="user-info" style="font-size: 14px;">載入中...</div>
     </div>
     <div class="viewfinder">
-      <div class="vf-box"><div class="scan-line"></div></div>
+      <div class="vf-box" id="vf-box"><div class="scan-line"></div></div>
     </div>
     <div class="scan-footer">
       <button class="btn btn-primary" onclick="liffScan()">使用 LINE 原生掃描器</button>
-      <p style="text-align:center; font-size: 12px; color: #888; margin-top: 15px;">對準 GS1 條碼自動偵測</p>
+      <p style="text-align:center; font-size: 12px; color: #888; margin-top: 15px;">支援 GS1-128, DataMatrix, QR</p>
     </div>
   </div>
 </div>
 
-<!-- 結果頁 -->
 <div class="sheet" id="result-sheet">
   <div class="sheet-content">
     <h2 style="margin-bottom: 20px;">掃描結果</h2>
@@ -149,8 +147,8 @@ const LIFF_ID = '2009550177-uiMwrJEn';
 let currentData = null;
 let codeReader = null;
 let isScanning = true;
+let videoTrack = null;
 
-// 1. 初始化 LIFF
 async function initLiff() {
   try {
     await liff.init({ liffId: LIFF_ID });
@@ -168,11 +166,9 @@ async function initLiff() {
   }
 }
 
-// 2. 啟動相機與 ZXing
 async function startCamera() {
   const video = document.getElementById('camera-video');
   
-  // 動態載入 ZXing
   if (!window.ZXingBrowser) {
     await new Promise(r => {
       const s = document.createElement('script');
@@ -182,20 +178,35 @@ async function startCamera() {
     });
   }
 
+  // 設定高品質相機參數與解碼格式
   const hints = new Map();
-  hints.set(2, true); // TRY_HARDER
+  // TRY_HARDER = 2, ASSUME_GS1 = 9
+  hints.set(2, true); 
   
   codeReader = new ZXingBrowser.BrowserMultiFormatReader(hints);
   
-  // 持續偵測
-  codeReader.decodeFromVideoElement(video, (result, error) => {
-    if (result && isScanning) {
-      handleDetection(result.getText());
+  const constraints = {
+    video: {
+      facingMode: "environment",
+      width: { ideal: 1920 },
+      height: { ideal: 1080 },
+      focusMode: "continuous"
     }
-  });
+  };
+
+  try {
+    // 使用 decodeFromConstraints 獲得更好的控制
+    codeReader.decodeFromConstraints(constraints, video, (result, error) => {
+      if (result && isScanning) {
+        handleDetection(result.getText());
+      }
+    });
+  } catch (err) {
+    console.error('Camera Access Error:', err);
+    alert('無法啟動相機，請檢查權限設定。');
+  }
 }
 
-// 3. LINE 原生掃描按鈕 (作為備案)
 async function liffScan() {
   try {
     const result = await liff.scanCodeV2();
@@ -205,39 +216,39 @@ async function liffScan() {
   }
 }
 
-// 4. GS1 解析邏輯 (強化版)
 function parseGS1(raw) {
-    // 預初始化結果，移除序號 (AI 21)
     const data = { gtin: null, batch: null, expiry: null };
+    let clean = raw.trim();
     
-    // 處理括號格式 (01)GTIN(17)YYMMDD(10)LOT
-    if (raw.includes('(')) {
-        const matches = raw.matchAll(/\((\d{2})\)([^()]+)/g);
+    // 移除常見的傳輸識別碼 (AIM Identifiers)
+    // ]C1 = GS1-128, ]d2 = GS1 DataMatrix
+    clean = clean.replace(/^\](C1|d2|e0|Q3)/, "");
+
+    if (clean.includes('(')) {
+        // 處理括號格式 (01)0471...
+        const matches = clean.matchAll(/\((\d{2,3})\)([^()]+)/g);
         for (const match of matches) {
             const ai = match[1];
             const val = match[2];
-            if (ai === '01') data.gtin = val;
+            if (ai === '01' || ai === '02') data.gtin = val;
             if (ai === '10') data.batch = val;
             if (ai === '17') data.expiry = formatGS1Date(val);
         }
     } else {
-        // 處理原始字串格式 (AI 緊跟著數值)
-        // 這是簡易判斷，實務上 GS1 原始碼會用 FNC1 (\x1D) 分隔
-        let clean = raw.replace(/^\]d2/, ""); // 移除 DataMatrix 識別碼
-        
+        // 處理連續字串格式
+        // GS1 規範：01 開頭固定 14 位，17 固定 6 位
         if (clean.startsWith('01')) {
             data.gtin = clean.substr(2, 14);
             let rest = clean.substr(16);
             
-            // 尋找 17 (效期) 與 10 (批號)
-            // 這裡假設常見順序，若順序不同需更複雜的邏輯
-            if (rest.includes('17')) {
-                let idx = rest.indexOf('17');
-                data.expiry = formatGS1Date(rest.substr(idx + 2, 6));
-            }
-            if (rest.includes('10')) {
-                let idx = rest.indexOf('10');
-                data.batch = rest.substr(idx + 2);
+            // 嘗試尋找 17 (效期)
+            if (rest.startsWith('17')) {
+                data.expiry = formatGS1Date(rest.substr(2, 6));
+                let afterExpiry = rest.substr(8);
+                if (afterExpiry.startsWith('10')) data.batch = afterExpiry.substr(2);
+            } else if (rest.startsWith('10')) {
+                // 如果 16 位後直接是 10 (批號)
+                data.batch = rest.substr(2);
             }
         }
     }
@@ -252,12 +263,10 @@ function formatGS1Date(s) {
     return `${y}-${m}-${d}`;
 }
 
-// 5. 處理偵測結果
 function handleDetection(raw) {
   isScanning = false;
   currentData = parseGS1(raw);
   
-  // 更新 UI
   const list = document.getElementById('result-list');
   list.innerHTML = `
     <div class="data-row"><span class="data-label">GTIN (產品碼)</span><span class="data-value">${currentData.gtin || '未辨識'}</span></div>
@@ -268,7 +277,6 @@ function handleDetection(raw) {
   document.getElementById('raw-data-debug').innerText = `Raw: ${raw}`;
   document.getElementById('result-sheet').classList.add('open');
   
-  // 震動回饋
   if (navigator.vibrate) navigator.vibrate(100);
 }
 
@@ -277,19 +285,18 @@ function closeResult() {
   setTimeout(() => { isScanning = true; }, 500);
 }
 
-// 6. 發送 Flex Message
 async function sendToLine() {
   if (!currentData) return;
   
   const flex = {
     type: "bubble",
     size: "kilo",
-    header: { type: "box", layout: "vertical", backgroundColor: "#06C755", contents: [{ type: "text", text: "GS1 產品資料", color: "#ffffff", weight: "bold" }] },
+    header: { type: "box", layout: "vertical", backgroundColor: "#06C755", contents: [{ type: "text", text: "📦 GS1 掃描結果", color: "#ffffff", weight: "bold", size: "sm" }] },
     body: {
       type: "box", layout: "vertical", spacing: "md", contents: [
-        { type: "box", layout: "horizontal", contents: [{ type: "text", text: "GTIN", color: "#aaaaaa", size: "sm" }, { type: "text", text: currentData.gtin || "—", align: "end", size: "sm" }] },
-        { type: "box", layout: "horizontal", contents: [{ type: "text", text: "批號", color: "#aaaaaa", size: "sm" }, { type: "text", text: currentData.batch || "—", align: "end", size: "sm" }] },
-        { type: "box", layout: "horizontal", contents: [{ type: "text", text: "效期", color: "#aaaaaa", size: "sm" }, { type: "text", text: currentData.expiry || "—", align: "end", size: "sm" }] }
+        { type: "box", layout: "horizontal", contents: [{ type: "text", text: "GTIN", color: "#aaaaaa", size: "sm" }, { type: "text", text: currentData.gtin || "—", align: "end", size: "sm", weight: "bold" }] },
+        { type: "box", layout: "horizontal", contents: [{ type: "text", text: "批號", color: "#aaaaaa", size: "sm" }, { type: "text", text: currentData.batch || "—", align: "end", size: "sm", weight: "bold" }] },
+        { type: "box", layout: "horizontal", contents: [{ type: "text", text: "效期", color: "#aaaaaa", size: "sm" }, { type: "text", text: currentData.expiry || "—", align: "end", size: "sm", weight: "bold" }] }
       ]
     }
   };
