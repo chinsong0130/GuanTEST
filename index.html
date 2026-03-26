@@ -12,7 +12,442 @@
   --green: #06C755;
   --black: #080808;
   --surface: #141414;
+  --border: rgba(255,255,255,0.1);<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>GS1 產品掃描器 (LIFF)</title>
+<script src="https://static.line-scdn.net/liff/edge/versions/2.22.3/sdk.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Noto+Sans+TC:wght@400;500;700&display=swap');
+
+:root {
+  --green: #06C755;
+  --black: #080808;
+  --surface: #141414;
+  --surface2: #1c1c1c;
   --border: rgba(255,255,255,0.1);
+  --text: #EFEFEF;
+  --muted: #777;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  height: 100%;
+  background: var(--black);
+  color: var(--text);
+  font-family: 'Noto Sans TC', sans-serif;
+  overflow: hidden;
+}
+
+.page { position: fixed; inset: 0; display: none; flex-direction: column; }
+.page.active { display: flex; }
+
+/* Auth Page */
+#page-auth { 
+  align-items: center; 
+  justify-content: center; 
+  padding: 40px; 
+  text-align: center; 
+  overflow-y: auto;
+}
+.version-tag { position: absolute; bottom: 20px; font-family: 'DM Mono', monospace; font-size: 10px; color: #333; }
+
+.manual-input-group {
+  width: 100%;
+  max-width: 320px;
+  margin-top: 40px;
+  padding-top: 30px;
+  border-top: 1px solid #222;
+}
+
+.input-field {
+  width: 100%;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  padding: 12px;
+  border-radius: 8px;
+  color: var(--text);
+  font-family: 'DM Mono', monospace;
+  font-size: 14px;
+  margin-bottom: 12px;
+  outline: none;
+}
+.input-field:focus { border-color: var(--green); }
+
+/* Scanner Page */
+#page-scanner { background: #000; }
+#camera-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+
+.scan-overlay {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column;
+  pointer-events: none;
+}
+
+.scan-header {
+  padding: 50px 20px 20px;
+  background: linear-gradient(to bottom, rgba(0,0,0,0.8), transparent);
+  pointer-events: all;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.engine-status {
+    font-size: 10px;
+    background: rgba(6, 199, 85, 0.2);
+    color: var(--green);
+    padding: 2px 8px;
+    border-radius: 4px;
+    border: 1px solid rgba(6, 199, 85, 0.3);
+}
+
+.viewfinder {
+  flex: 1; display: flex; align-items: center; justify-content: center;
+}
+
+.vf-box {
+  width: 90%;
+  height: 160px;
+  border: 2px solid var(--green);
+  position: relative;
+  box-shadow: 0 0 0 5000px rgba(0,0,0,0.6);
+  transition: all 0.3s;
+}
+
+.scan-line {
+  position: absolute; width: 100%; height: 2px;
+  background: var(--green);
+  box-shadow: 0 0 10px var(--green);
+  animation: scan 2s linear infinite;
+}
+
+@keyframes scan { 0% { top: 0; } 100% { top: 100%; } }
+
+.scan-footer {
+  padding: 20px 20px 40px;
+  background: linear-gradient(to top, rgba(0,0,0,0.8), transparent);
+  pointer-events: all;
+}
+
+/* Result Sheet */
+.sheet {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.8);
+  display: none; align-items: flex-end; z-index: 100;
+}
+.sheet.open { display: flex; }
+.sheet-content {
+  width: 100%; background: var(--surface);
+  border-radius: 20px 20px 0 0; padding: 25px;
+  max-height: 80vh; overflow-y: auto;
+}
+
+.data-row { display: flex; flex-direction: column; padding: 12px 0; border-bottom: 1px solid var(--border); }
+.data-label { color: var(--muted); font-size: 12px; margin-bottom: 4px; }
+.data-value { font-family: 'DM Mono', monospace; color: var(--green); font-weight: 500; font-size: 16px; word-break: break-all; }
+
+.btn {
+  width: 100%; padding: 16px; border-radius: 12px; border: none;
+  font-size: 16px; font-weight: bold; cursor: pointer;
+  transition: transform 0.1s;
+}
+.btn:active { transform: scale(0.98); }
+.btn-primary { background: var(--green); color: #000; }
+.btn-secondary { background: #333; color: #fff; margin-top: 10px; }
+.btn-outline { background: transparent; border: 1px solid var(--green); color: var(--green); margin-top: 10px; padding: 12px; }
+
+.debug-info {
+    font-size: 10px; color: #555; word-break: break-all; margin-top: 15px; font-family: monospace;
+    border-top: 1px solid #222; padding-top: 10px;
+}
+</style>
+</head>
+<body>
+
+<div class="page active" id="page-auth">
+  <h1 style="margin-bottom: 10px;">GS1 Scanner</h1>
+  <p style="color: var(--muted); margin-bottom: 30px;">登入 LINE 帳號以啟用完整功能</p>
+  
+  <button class="btn btn-primary" id="login-btn" onclick="initLiff()">以 LINE 帳號登入</button>
+  
+  <div class="manual-input-group">
+    <p style="font-size: 13px; color: var(--muted); margin-bottom: 12px;">手動輸入 GS1 字串</p>
+    <input type="text" class="input-field" id="manual-gs1-input" placeholder="(01)0471...(17)...">
+    <button class="btn btn-outline" onclick="handleManualInput()">解析並預覽</button>
+  </div>
+
+  <div class="version-tag">v1.0.7</div>
+</div>
+
+<div class="page" id="page-scanner">
+  <video id="camera-video" playsinline muted></video>
+  <div class="scan-overlay">
+    <div class="scan-header">
+        <div id="user-info" style="font-size: 14px;">載入中...</div>
+        <div class="engine-status" id="engine-status">掃描引擎準備中</div>
+    </div>
+    <div class="viewfinder">
+      <div class="vf-box" id="vf-box"><div class="scan-line"></div></div>
+    </div>
+    <div class="scan-footer">
+      <button class="btn btn-primary" onclick="liffScan()">使用 LINE 原生掃描器</button>
+      <button class="btn btn-secondary" onclick="backToHome()">返回首頁</button>
+    </div>
+  </div>
+</div>
+
+<div class="sheet" id="result-sheet">
+  <div class="sheet-content">
+    <h2 style="margin-bottom: 20px;">掃描結果</h2>
+    <div id="result-list"></div>
+    <div class="debug-info" id="raw-data-debug"></div>
+    <div style="margin-top: 30px;">
+      <button class="btn btn-primary" onclick="sendToLine()">發送至聊天室</button>
+      <button class="btn btn-secondary" onclick="closeResult()">繼續掃描 / 輸入</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const LIFF_ID = '2009550177-uiMwrJEn'; 
+let currentData = null;
+let codeReader = null;
+let isScanning = true;
+let isLiffInited = false;
+
+// 1. 初始化 LIFF
+async function initLiff() {
+  try {
+    await liff.init({ liffId: LIFF_ID });
+    isLiffInited = true;
+    if (!liff.isLoggedIn()) {
+      liff.login();
+    } else {
+      const profile = await liff.getProfile();
+      document.getElementById('user-info').innerText = profile.displayName;
+      document.getElementById('page-auth').classList.remove('active');
+      document.getElementById('page-scanner').classList.add('active');
+      startCamera();
+    }
+  } catch (err) {
+    console.error('LIFF Init Error:', err);
+  }
+}
+
+// 2. 啟動相機
+async function startCamera() {
+  const video = document.getElementById('camera-video');
+  const statusEl = document.getElementById('engine-status');
+  
+  if (!window.ZXingBrowser) {
+    statusEl.innerText = "載入解碼庫...";
+    await new Promise(r => {
+      const s = document.createElement('script');
+      s.src = 'https://unpkg.com/@zxing/browser@0.1.5/umd/index.min.js';
+      s.onload = r;
+      document.head.appendChild(s);
+    });
+  }
+
+  statusEl.innerText = "引擎已啟動";
+  const hints = new Map();
+  hints.set(2, true); // TRY_HARDER
+  hints.set(9, true); // ASSUME_GS1
+  
+  codeReader = new ZXingBrowser.BrowserMultiFormatReader(hints);
+  
+  const constraints = {
+    video: {
+      facingMode: "environment",
+      width: { ideal: 1920 },
+      height: { ideal: 1080 },
+      focusMode: "continuous"
+    }
+  };
+
+  try {
+    codeReader.decodeFromConstraints(constraints, video, (result) => {
+      if (result && isScanning) {
+          handleDetection(result.getText());
+      }
+    });
+  } catch (err) {
+    console.error('Camera Access Error:', err);
+    statusEl.innerText = "相機啟動失敗";
+  }
+}
+
+// 3. 手動輸入處理
+function handleManualInput() {
+  const inputEl = document.getElementById('manual-gs1-input');
+  const val = inputEl.value.trim();
+  if (!val) {
+    alert('請輸入 GS1 字串');
+    return;
+  }
+  handleDetection(val);
+}
+
+// 4. LINE 原生掃描
+async function liffScan() {
+  try {
+    const result = await liff.scanCodeV2();
+    if (result.value) handleDetection(result.value);
+  } catch (err) {
+    console.error('LIFF Scan Error:', err);
+  }
+}
+
+// 5. 解析 GS1 (移除 AI 21 序號)
+function parseGS1(raw) {
+    const data = { gtin: null, batch: null, expiry: null };
+    let clean = raw.trim().replace(/^\](C1|d2|e0|Q3)/, "");
+
+    if (clean.includes('(')) {
+        const matches = clean.matchAll(/\((\d{2,3})\)([^()]+)/g);
+        for (const match of matches) {
+            const ai = match[1];
+            const val = match[2].trim();
+            if (ai === '01' || ai === '02') data.gtin = val;
+            if (ai === '10') data.batch = val;
+            if (ai === '17') data.expiry = formatGS1Date(val);
+        }
+    } 
+    else {
+        let i = 0;
+        while (i < clean.length) {
+            const ai2 = clean.substr(i, 2);
+            if (ai2 === '01' || ai2 === '02') {
+                data.gtin = clean.substr(i + 2, 14);
+                i += 16;
+            } else if (ai2 === '17') {
+                data.expiry = formatGS1Date(clean.substr(i + 2, 6));
+                i += 8;
+            } else if (ai2 === '10') {
+                let sub = clean.substr(i + 2);
+                let fnc1Idx = sub.indexOf('\x1D');
+                if (fnc1Idx === -1) {
+                    let nextAIIdx = sub.indexOf('20'); 
+                    if (nextAIIdx !== -1) {
+                        data.batch = sub.substring(0, nextAIIdx);
+                        i = clean.length;
+                    } else {
+                        data.batch = sub;
+                        i = clean.length;
+                    }
+                } else {
+                    data.batch = sub.substring(0, fnc1Idx);
+                    i += (2 + fnc1Idx + 1);
+                }
+            } else {
+                i++;
+            }
+        }
+    }
+    return data;
+}
+
+function formatGS1Date(s) {
+    if (!s || s.length < 6) return s;
+    const y = "20" + s.substr(0, 2);
+    const m = s.substr(2, 2);
+    const d = s.substr(4, 2);
+    return `${y}-${m}-${d}`;
+}
+
+// 6. 觸發顯示
+function handleDetection(raw) {
+  isScanning = false;
+  currentData = parseGS1(raw);
+  
+  const list = document.getElementById('result-list');
+  list.innerHTML = `
+    <div class="data-row"><span class="data-label">GTIN (產品碼)</span><span class="data-value">${currentData.gtin || '未辨識'}</span></div>
+    <div class="data-row"><span class="data-label">批號 (Batch)</span><span class="data-value">${currentData.batch || '未辨識'}</span></div>
+    <div class="data-row"><span class="data-label">有效日期</span><span class="data-value">${currentData.expiry || '未辨識'}</span></div>
+  `;
+  
+  document.getElementById('raw-data-debug').innerText = `解析內容: ${raw}`;
+  document.getElementById('result-sheet').classList.add('open');
+  
+  if (navigator.vibrate) navigator.vibrate(100);
+}
+
+function closeResult() {
+  document.getElementById('result-sheet').classList.remove('open');
+  setTimeout(() => { isScanning = true; }, 500);
+}
+
+function backToHome() {
+    document.getElementById('page-scanner').classList.remove('active');
+    document.getElementById('page-auth').classList.add('active');
+}
+
+// 7. 發送至 LINE
+async function sendToLine() {
+  if (!currentData) return;
+  
+  // 檢查是否已登入 (手動輸入可能在未登入狀態)
+  if (!liff.isLoggedIn()) {
+      alert("請先完成 LINE 登入後再發送。");
+      initLiff();
+      return;
+  }
+
+  const flex = {
+    type: "bubble",
+    size: "mega",
+    header: { 
+      type: "box", layout: "vertical", backgroundColor: "#06C755", 
+      contents: [{ type: "text", text: "📦 GS1 掃描結果", color: "#ffffff", weight: "bold", size: "sm" }] 
+    },
+    body: {
+      type: "box", layout: "vertical", spacing: "lg",
+      contents: [
+        { type: "box", layout: "vertical", contents: [
+            { type: "text", text: "GTIN", color: "#aaaaaa", size: "xs" },
+            { type: "text", text: currentData.gtin || "—", size: "md", weight: "bold", wrap: true }
+        ]},
+        { type: "box", layout: "vertical", contents: [
+            { type: "text", text: "批號 (Batch)", color: "#aaaaaa", size: "xs" },
+            { type: "text", text: currentData.batch || "—", size: "md", weight: "bold", wrap: true }
+        ]},
+        { type: "box", layout: "vertical", contents: [
+            { type: "text", text: "有效日期", color: "#aaaaaa", size: "xs" },
+            { type: "text", text: currentData.expiry || "—", size: "md", weight: "bold", wrap: true }
+        ]}
+      ]
+    }
+  };
+
+  try {
+    await liff.sendMessages([{ type: "flex", altText: "GS1 掃描結果", contents: flex }]);
+    liff.closeWindow();
+  } catch (err) {
+    alert("發送失敗: " + err);
+  }
+}
+
+// 自動初始化嘗試 (靜默)
+window.onload = () => {
+    liff.init({ liffId: LIFF_ID }).then(() => {
+        isLiffInited = true;
+        if (liff.isLoggedIn()) {
+            liff.getProfile().then(profile => {
+                document.getElementById('user-info').innerText = profile.displayName;
+                document.getElementById('page-auth').classList.remove('active');
+                document.getElementById('page-scanner').classList.add('active');
+                startCamera();
+            });
+        }
+    });
+};
+</script>
+</body>
+</html>
   --text: #EFEFEF;
   --muted: #777;
 }
