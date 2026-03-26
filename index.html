@@ -5,272 +5,117 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>GS1 Scanner</title>
 <script src="https://static.line-scdn.net/liff/edge/versions/2.22.3/sdk.js"></script>
-<link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
 :root {
-  --green: #06C755;
-  --green-dim: rgba(6,199,85,0.15);
-  --black: #080808;
-  --surface: #111;
-  --surface2: #1a1a1a;
-  --border: rgba(255,255,255,0.08);
-  --text: #F0F0F0;
-  --muted: #666;
-  --red: #FF4D4D;
+  --green:#06C755; --black:#080808; --surface:#111;
+  --surface2:#1a1a1a; --border:rgba(255,255,255,0.08);
+  --text:#F0F0F0; --muted:#666; --red:#FF4D4D;
+  --yellow:#FFD600; --blue:#4DA6FF;
 }
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;background:var(--black);color:var(--text);font-family:'Syne',sans-serif;overflow:hidden}
+.page{position:fixed;inset:0;display:none;flex-direction:column}
+.page.active{display:flex}
 
-* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+/* Auth */
+#page-auth{align-items:center;justify-content:center;padding:40px 32px 70px;overflow-y:auto}
+.auth-logo{width:52px;height:52px;background:var(--green);border-radius:14px;display:flex;align-items:center;justify-content:center;margin-bottom:24px}
+.auth-title{font-size:24px;font-weight:700;letter-spacing:-.5px;margin-bottom:6px}
+.auth-sub{color:var(--muted);font-size:13px;margin-bottom:32px;text-align:center}
+.btn{width:100%;padding:14px 20px;border-radius:12px;border:none;font-family:'Syne',sans-serif;font-size:14px;font-weight:600;cursor:pointer;transition:opacity .15s,transform .1s;display:flex;align-items:center;justify-content:center;gap:8px}
+.btn:active{transform:scale(.97);opacity:.85}
+.btn-primary{background:var(--green);color:#000}
+.btn-secondary{background:var(--surface2);color:var(--text)}
+.btn-outline{background:transparent;border:1px solid var(--border);color:var(--muted)}
+.divider{display:flex;align-items:center;gap:12px;width:100%;max-width:320px;margin:20px 0;color:var(--muted);font-size:12px}
+.divider::before,.divider::after{content:'';flex:1;height:1px;background:var(--border)}
+.input-wrap{width:100%;max-width:320px;margin-bottom:10px}
+.input-field{width:100%;background:var(--surface2);border:1px solid var(--border);padding:12px 14px;border-radius:10px;color:var(--text);font-family:'DM Mono',monospace;font-size:13px;outline:none;transition:border-color .2s}
+.input-field::placeholder{color:var(--muted)}
+.input-field:focus{border-color:rgba(6,199,85,.5)}
+.ver{position:absolute;bottom:48px;font-family:'DM Mono',monospace;font-size:10px;color:#222}
 
-html, body { height: 100%; background: var(--black); color: var(--text); font-family: 'Syne', sans-serif; overflow: hidden; }
+/* Scanner */
+#page-scanner{background:#000}
+#camera-video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:1}
+.scan-overlay{position:absolute;inset:0;display:flex;flex-direction:column;pointer-events:none;z-index:2}
+.scan-header{padding:52px 20px 16px;background:linear-gradient(to bottom,rgba(0,0,0,.85),transparent);pointer-events:all;display:flex;justify-content:space-between;align-items:center}
+.back-btn{background:rgba(255,255,255,.1);border:none;border-radius:10px;color:#fff;padding:8px 14px;font-family:'Syne',sans-serif;font-size:13px;cursor:pointer;pointer-events:all}
+.back-btn:active{background:rgba(255,255,255,.2)}
+#user-display{font-size:12px;color:rgba(255,255,255,.6);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.badge{font-family:'DM Mono',monospace;font-size:10px;padding:4px 10px;border-radius:20px;border:1px solid;transition:all .3s}
+.badge.ok{color:var(--green);border-color:rgba(6,199,85,.4);background:rgba(6,199,85,.1)}
+.badge.loading{color:#888;border-color:#333;background:transparent}
+.badge.err{color:var(--red);border-color:rgba(255,77,77,.4);background:rgba(255,77,77,.1)}
+.viewfinder{flex:1;display:flex;align-items:center;justify-content:center;position:relative}
+.vf-frame{width:88%;max-width:340px;height:150px;position:relative}
+.vf-frame::before,.vf-frame::after,.vf-br,.vf-bl{content:'';position:absolute;width:22px;height:22px;border-color:var(--green);border-style:solid}
+.vf-frame::before{top:0;left:0;border-width:3px 0 0 3px;border-radius:3px 0 0 0}
+.vf-frame::after{top:0;right:0;border-width:3px 3px 0 0;border-radius:0 3px 0 0}
+.vf-br{bottom:0;right:0;border-width:0 3px 3px 0;border-radius:0 0 3px 0}
+.vf-bl{bottom:0;left:0;border-width:0 0 3px 3px;border-radius:0 0 0 3px}
+.scan-line{position:absolute;width:calc(100% - 4px);left:2px;height:2px;background:linear-gradient(to right,transparent,var(--green),transparent);box-shadow:0 0 8px var(--green);animation:sweep 2s ease-in-out infinite;display:none}
+.scanning .scan-line{display:block}
+@keyframes sweep{0%{top:0;opacity:1}90%{top:calc(100% - 2px);opacity:1}100%{top:calc(100% - 2px);opacity:0}}
+.idle-msg{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;color:rgba(255,255,255,.35);font-size:13px;text-align:center;line-height:1.6}
+.scan-footer{padding:16px 20px 56px;background:linear-gradient(to top,rgba(0,0,0,.9),transparent);pointer-events:all;display:flex;flex-direction:column;gap:8px}
 
-/* ───── Pages ───── */
-.page { position: fixed; inset: 0; display: none; flex-direction: column; }
-.page.active { display: flex; }
+/* Result Sheet */
+.sheet{position:fixed;inset:0;background:rgba(0,0,0,.7);backdrop-filter:blur(6px);display:none;align-items:flex-end;z-index:100}
+.sheet.open{display:flex;animation:fadeIn .2s ease}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+.sheet-inner{width:100%;background:var(--surface);border-radius:24px 24px 0 0;padding:28px 24px 48px;max-height:82vh;overflow-y:auto;animation:slideUp .28s cubic-bezier(.32,.72,0,1)}
+@keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
+.handle{width:36px;height:4px;background:#333;border-radius:2px;margin:0 auto 22px}
+.sheet-title{font-size:18px;font-weight:700;margin-bottom:18px;letter-spacing:-.3px}
+.result-card{background:var(--surface2);border:1px solid var(--border);border-radius:14px;overflow:hidden;margin-bottom:10px}
+.r-row{display:flex;flex-direction:column;padding:13px 16px;border-bottom:1px solid var(--border)}
+.r-row:last-child{border-bottom:none}
+.r-lbl{font-size:10px;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px}
+.r-val{font-family:'DM Mono',monospace;font-size:15px;font-weight:500;color:var(--green);word-break:break-all;line-height:1.4}
+.r-val.miss{color:var(--muted);font-size:13px;font-style:italic}
+.raw-box{font-family:'DM Mono',monospace;font-size:10px;color:#444;word-break:break-all;margin:10px 0;padding:10px 12px;background:#0d0d0d;border-radius:8px;line-height:1.7}
+.sheet-btns{display:flex;flex-direction:column;gap:8px;margin-top:18px}
 
-/* ───── Auth Page ───── */
-#page-auth {
-  align-items: center; justify-content: center;
-  padding: 40px 32px;
-  background: var(--black);
-  overflow-y: auto;
+/* Toast */
+.toast{position:fixed;top:56px;left:50%;transform:translateX(-50%);background:#1e1e1e;border:1px solid var(--border);color:var(--text);font-size:12px;padding:9px 16px;border-radius:20px;z-index:300;white-space:nowrap;opacity:0;transition:opacity .2s;pointer-events:none;font-family:'DM Mono',monospace}
+.toast.show{opacity:1}
+
+/* Console Panel */
+#console-panel{
+  position:fixed;bottom:0;left:0;right:0;height:38px;
+  background:#0a0a0a;border-top:1px solid #1e1e1e;
+  z-index:500;display:flex;flex-direction:column;
+  transition:height .25s ease;font-family:'DM Mono',monospace;
 }
-
-.auth-logo {
-  width: 56px; height: 56px;
-  background: var(--green);
-  border-radius: 16px;
-  display: flex; align-items: center; justify-content: center;
-  margin-bottom: 28px;
+#console-panel.expanded{height:260px}
+#con-header{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:0 12px;height:38px;min-height:38px;cursor:pointer;user-select:none;flex-shrink:0;
 }
-.auth-logo svg { width: 28px; height: 28px; }
-
-.auth-title { font-size: 26px; font-weight: 700; letter-spacing: -0.5px; margin-bottom: 6px; }
-.auth-sub { color: var(--muted); font-size: 14px; margin-bottom: 36px; }
-
-.btn {
-  width: 100%; padding: 15px 20px;
-  border-radius: 12px; border: none;
-  font-family: 'Syne', sans-serif;
-  font-size: 15px; font-weight: 600;
-  cursor: pointer; transition: opacity 0.15s, transform 0.1s;
-  display: flex; align-items: center; justify-content: center; gap: 10px;
-}
-.btn:active { transform: scale(0.97); opacity: 0.85; }
-.btn-primary { background: var(--green); color: #000; }
-.btn-secondary { background: var(--surface2); color: var(--text); }
-.btn-outline { background: transparent; border: 1px solid var(--border); color: var(--muted); }
-
-.divider {
-  display: flex; align-items: center; gap: 12px;
-  width: 100%; max-width: 320px; margin: 24px 0;
-  color: var(--muted); font-size: 12px;
-}
-.divider::before, .divider::after {
-  content: ''; flex: 1; height: 1px; background: var(--border);
-}
-
-.input-wrap { width: 100%; max-width: 320px; position: relative; margin-bottom: 10px; }
-.input-field {
-  width: 100%; background: var(--surface2); border: 1px solid var(--border);
-  padding: 13px 16px; border-radius: 10px;
-  color: var(--text); font-family: 'DM Mono', monospace; font-size: 13px;
-  outline: none; transition: border-color 0.2s;
-}
-.input-field::placeholder { color: var(--muted); }
-.input-field:focus { border-color: rgba(6,199,85,0.5); }
-
-.version-tag {
-  position: absolute; bottom: 20px;
-  font-family: 'DM Mono', monospace; font-size: 10px; color: #2a2a2a;
-}
-
-/* ───── Scanner Page ───── */
-#page-scanner { background: #000; }
-
-#camera-video {
-  position: absolute; inset: 0;
-  width: 100%; height: 100%;
-  object-fit: cover; z-index: 1;
-}
-
-.scan-overlay {
-  position: absolute; inset: 0;
-  display: flex; flex-direction: column;
-  pointer-events: none; z-index: 2;
-}
-
-.scan-header {
-  padding: 52px 20px 16px;
-  background: linear-gradient(to bottom, rgba(0,0,0,0.85) 0%, transparent 100%);
-  pointer-events: all;
-  display: flex; justify-content: space-between; align-items: center;
-}
-
-.scan-back-btn {
-  background: rgba(255,255,255,0.1);
-  border: none; border-radius: 10px;
-  color: #fff; padding: 8px 14px;
-  font-family: 'Syne', sans-serif; font-size: 13px;
-  cursor: pointer; pointer-events: all;
-  display: flex; align-items: center; gap: 6px;
-  transition: background 0.2s;
-}
-.scan-back-btn:active { background: rgba(255,255,255,0.2); }
-
-#user-display { font-size: 13px; color: rgba(255,255,255,0.7); }
-
-.status-badge {
-  font-family: 'DM Mono', monospace;
-  font-size: 10px; padding: 4px 10px;
-  border-radius: 20px; border: 1px solid;
-  transition: all 0.3s;
-}
-.status-badge.ready { color: var(--green); border-color: rgba(6,199,85,0.4); background: rgba(6,199,85,0.1); }
-.status-badge.loading { color: #888; border-color: #333; background: transparent; }
-.status-badge.error { color: var(--red); border-color: rgba(255,77,77,0.4); background: rgba(255,77,77,0.1); }
-
-/* Viewfinder */
-.viewfinder {
-  flex: 1; display: flex; align-items: center; justify-content: center; position: relative;
-}
-
-.vf-frame {
-  width: 88%; max-width: 340px; height: 150px;
-  position: relative;
-}
-
-/* Corner brackets only */
-.vf-frame::before, .vf-frame::after,
-.vf-corner-br, .vf-corner-bl {
-  content: ''; position: absolute;
-  width: 22px; height: 22px;
-  border-color: var(--green); border-style: solid;
-  transition: border-color 0.3s;
-}
-.vf-frame::before { top: 0; left: 0; border-width: 3px 0 0 3px; border-radius: 3px 0 0 0; }
-.vf-frame::after  { top: 0; right: 0; border-width: 3px 3px 0 0; border-radius: 0 3px 0 0; }
-.vf-corner-br { bottom: 0; right: 0; border-width: 0 3px 3px 0; border-radius: 0 0 3px 0; }
-.vf-corner-bl { bottom: 0; left: 0; border-width: 0 0 3px 3px; border-radius: 0 0 0 3px; }
-
-/* Scan line */
-.scan-line {
-  position: absolute; width: calc(100% - 4px); left: 2px; height: 2px;
-  background: linear-gradient(to right, transparent, var(--green), transparent);
-  box-shadow: 0 0 8px var(--green);
-  animation: sweep 2s ease-in-out infinite;
-  display: none;
-}
-.scanning .scan-line { display: block; }
-
-@keyframes sweep {
-  0%   { top: 0; opacity: 1; }
-  90%  { top: calc(100% - 2px); opacity: 1; }
-  100% { top: calc(100% - 2px); opacity: 0; }
-}
-
-/* Idle state */
-.scan-idle-msg {
-  position: absolute; inset: 0;
-  display: flex; flex-direction: column;
-  align-items: center; justify-content: center;
-  gap: 8px; color: rgba(255,255,255,0.4);
-  font-size: 13px; text-align: center;
-  line-height: 1.5;
-}
-.scan-idle-msg svg { opacity: 0.3; margin-bottom: 4px; }
-
-.scan-footer {
-  padding: 20px 20px 44px;
-  background: linear-gradient(to top, rgba(0,0,0,0.9) 0%, transparent 100%);
-  pointer-events: all; display: flex; flex-direction: column; gap: 10px;
-}
-
-/* ───── Result Sheet ───── */
-.sheet {
-  position: fixed; inset: 0;
-  background: rgba(0,0,0,0.7);
-  backdrop-filter: blur(6px);
-  display: none; align-items: flex-end; z-index: 100;
-  animation: fadeIn 0.2s ease;
-}
-.sheet.open { display: flex; }
-
-@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-
-.sheet-content {
-  width: 100%; background: var(--surface);
-  border-radius: 24px 24px 0 0;
-  padding: 28px 24px 40px;
-  max-height: 82vh; overflow-y: auto;
-  animation: slideUp 0.28s cubic-bezier(0.32, 0.72, 0, 1);
-}
-
-@keyframes slideUp {
-  from { transform: translateY(100%); }
-  to   { transform: translateY(0); }
-}
-
-.sheet-handle {
-  width: 36px; height: 4px;
-  background: #333; border-radius: 2px;
-  margin: 0 auto 24px;
-}
-
-.sheet-title {
-  font-size: 18px; font-weight: 700;
-  margin-bottom: 20px; letter-spacing: -0.3px;
-}
-
-.result-card {
-  background: var(--surface2);
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  overflow: hidden; margin-bottom: 12px;
-}
-
-.result-row {
-  display: flex; flex-direction: column;
-  padding: 14px 16px;
-  border-bottom: 1px solid var(--border);
-}
-.result-row:last-child { border-bottom: none; }
-
-.result-label { font-size: 11px; color: var(--muted); margin-bottom: 4px; letter-spacing: 0.5px; text-transform: uppercase; }
-.result-value {
-  font-family: 'DM Mono', monospace;
-  font-size: 16px; font-weight: 500;
-  color: var(--green); word-break: break-all; line-height: 1.4;
-}
-.result-value.missing { color: var(--muted); font-style: italic; font-size: 14px; }
-
-.raw-debug {
-  font-family: 'DM Mono', monospace; font-size: 10px;
-  color: #333; word-break: break-all;
-  margin: 12px 0; padding: 12px;
-  background: #0d0d0d; border-radius: 8px; line-height: 1.6;
-}
-
-.sheet-actions { display: flex; flex-direction: column; gap: 10px; margin-top: 20px; }
-
-/* ───── Toast ───── */
-.toast {
-  position: fixed; top: 60px; left: 50%; transform: translateX(-50%);
-  background: #1e1e1e; border: 1px solid var(--border);
-  color: var(--text); font-size: 13px; padding: 10px 18px;
-  border-radius: 20px; z-index: 200; white-space: nowrap;
-  opacity: 0; transition: opacity 0.2s; pointer-events: none;
-  font-family: 'DM Mono', monospace;
-}
-.toast.show { opacity: 1; }
+#con-title{font-size:11px;color:#555;display:flex;align-items:center;gap:8px}
+#con-count{background:#1e1e1e;border:1px solid #2a2a2a;color:#555;font-size:10px;padding:1px 6px;border-radius:10px;min-width:20px;text-align:center}
+#con-count.has-err{background:rgba(255,77,77,.15);border-color:rgba(255,77,77,.3);color:var(--red)}
+#con-clear{background:none;border:none;color:#444;font-size:10px;cursor:pointer;padding:4px 8px;font-family:'DM Mono',monospace}
+#con-clear:hover{color:#888}
+#con-log{flex:1;overflow-y:auto;padding:4px 12px 6px;display:flex;flex-direction:column;gap:1px}
+.ll{font-size:11px;line-height:1.5;display:flex;gap:8px;padding:2px 0;border-bottom:1px solid #0f0f0f}
+.lt{color:#2a2a2a;flex-shrink:0;font-size:10px;padding-top:1px}
+.lm{word-break:break-all;flex:1}
+.ll.llog .lm{color:#888}
+.ll.linfo .lm{color:var(--blue)}
+.ll.lwarn .lm{color:var(--yellow)}
+.ll.lerror .lm{color:var(--red)}
+.ll.lok .lm{color:var(--green)}
 </style>
 </head>
 <body>
 
-<!-- ─── Auth Page ─── -->
+<!-- Auth Page -->
 <div class="page active" id="page-auth">
   <div class="auth-logo">
-    <svg viewBox="0 0 28 28" fill="none">
+    <svg width="26" height="26" viewBox="0 0 28 28" fill="none">
       <rect x="3" y="3" width="4" height="22" rx="1" fill="#000"/>
       <rect x="9" y="3" width="2" height="22" rx="1" fill="#000"/>
       <rect x="13" y="3" width="4" height="22" rx="1" fill="#000"/>
@@ -279,441 +124,406 @@ html, body { height: 100%; background: var(--black); color: var(--text); font-fa
     </svg>
   </div>
   <div class="auth-title">GS1 Scanner</div>
-  <div class="auth-sub">掃描 Code128 / DataMatrix / GS1 條碼</div>
-
-  <button class="btn btn-primary" id="login-btn" style="max-width:320px" onclick="initLiff()">
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M19.365 9.89c.50 0 .906.407.906.907s-.406.907-.906.907H17.35v1.048h2.015c.5 0 .906.407.906.907s-.406.906-.906.906H16.444a.907.907 0 01-.907-.906V9.89c0-.5.407-.906.907-.906h2.921zm-4.785 3.769a.907.907 0 01-.906.906.907.907 0 01-.907-.906V9.89c0-.5.407-.906.907-.906s.906.406.906.906v3.769zM9.432 13.66l-1.949-2.642v2.642a.907.907 0 01-.906.907.907.907 0 01-.906-.907V9.891c0-.5.406-.907.906-.907.3 0 .567.148.729.376l1.95 2.642V9.89c0-.5.405-.906.905-.906s.907.406.907.906v3.769a.91.91 0 01-.636.866zm-5.427.907H1.084A.907.907 0 01.178 13.66V9.89c0-.5.406-.906.906-.906.5 0 .907.406.907.906v2.863H4.005c.5 0 .906.406.906.906s-.406.907-.906.907zM12 0C5.373 0 0 4.97 0 11.093c0 5.488 4.87 10.073 11.448 10.94.446.096.529.385.404.68l-.512 1.91c-.12.447-.172.912.477.664C14.018 24.4 19.5 20.9 21.97 18.09 23.857 16.01 24 13.669 24 11.094 24 4.97 18.627 0 12 0z"/></svg>
-    以 LINE 帳號登入
-  </button>
-
-  <div class="divider" style="max-width:320px">或</div>
-
+  <div class="auth-sub">Code128 / DataMatrix / GS1 條碼掃描</div>
+  <button class="btn btn-primary" style="max-width:320px" onclick="initLiff()">以 LINE 登入</button>
+  <div class="divider">或手動輸入</div>
   <div class="input-wrap">
-    <input type="text" class="input-field" id="manual-gs1-input"
-      placeholder="(01)04711...（手動輸入 GS1）">
+    <input type="text" class="input-field" id="manual-input" placeholder="(01)04711...(17)...(10)...">
   </div>
   <div style="width:100%;max-width:320px">
     <button class="btn btn-outline" onclick="handleManualInput()">解析並預覽</button>
   </div>
-
-  <div class="version-tag">v2.0.0</div>
+  <div class="ver">v3.0.0 — debug build</div>
 </div>
 
-<!-- ─── Scanner Page ─── -->
+<!-- Scanner Page -->
 <div class="page" id="page-scanner">
   <video id="camera-video" playsinline muted autoplay></video>
-
-  <div class="scan-overlay" id="scan-overlay">
-
+  <div class="scan-overlay">
     <div class="scan-header">
-      <button class="scan-back-btn" onclick="backToHome()">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
-        返回
-      </button>
+      <button class="back-btn" onclick="backToHome()">← 返回</button>
       <div id="user-display"></div>
-      <div class="status-badge loading" id="status-badge">初始化中</div>
+      <div class="badge loading" id="status-badge">初始化中</div>
     </div>
-
     <div class="viewfinder">
       <div class="vf-frame" id="vf-frame">
-        <div class="vf-corner-br"></div>
-        <div class="vf-corner-bl"></div>
+        <div class="vf-br"></div><div class="vf-bl"></div>
         <div class="scan-line"></div>
-        <div class="scan-idle-msg" id="idle-msg">
-          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-            <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
-            <rect x="3" y="14" width="7" height="7" rx="1"/>
-            <rect x="14" y="14" width="3" height="3" rx="0.5"/>
-            <rect x="18" y="14" width="3" height="3" rx="0.5"/>
-            <rect x="14" y="18" width="3" height="3" rx="0.5"/>
-            <rect x="18" y="18" width="3" height="3" rx="0.5"/>
-          </svg>
-          點擊下方按鈕<br>啟動掃描鏡頭
-        </div>
+        <div class="idle-msg" id="idle-msg">請點擊下方<br>「啟動鏡頭」</div>
       </div>
     </div>
-
     <div class="scan-footer">
-      <button class="btn btn-primary" id="start-cam-btn" onclick="startCamera()">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
-        </svg>
-        啟動掃描鏡頭
-      </button>
-      <button class="btn btn-secondary" id="stop-cam-btn" style="display:none" onclick="stopCamera()">
-        停止鏡頭
-      </button>
+      <button class="btn btn-primary" id="start-btn" onclick="startCamera()">啟動掃描鏡頭</button>
+      <button class="btn btn-secondary" id="stop-btn" style="display:none" onclick="stopCamera()">停止鏡頭</button>
     </div>
-
   </div>
 </div>
 
-<!-- ─── Result Sheet ─── -->
+<!-- Result Sheet -->
 <div class="sheet" id="result-sheet">
-  <div class="sheet-content">
-    <div class="sheet-handle"></div>
+  <div class="sheet-inner">
+    <div class="handle"></div>
     <div class="sheet-title">掃描結果</div>
     <div class="result-card" id="result-list"></div>
-    <div class="raw-debug" id="raw-debug"></div>
-    <div class="sheet-actions">
+    <div class="raw-box" id="raw-box"></div>
+    <div class="sheet-btns">
       <button class="btn btn-primary" onclick="sendToLine()">傳送至 LINE 聊天室</button>
       <button class="btn btn-secondary" onclick="closeResult()">繼續掃描</button>
     </div>
   </div>
 </div>
 
-<!-- ─── Toast ─── -->
+<!-- Toast -->
 <div class="toast" id="toast"></div>
 
-<!-- ─── ZXing CDN (分離的 @zxing/library + @zxing/browser) ─── -->
-<script src="https://unpkg.com/@zxing/library@0.20.0/umd/index.min.js"></script>
-<script src="https://unpkg.com/@zxing/browser@0.1.5/umd/index.min.js"></script>
+<!-- Console Panel -->
+<div id="console-panel">
+  <div id="con-header" onclick="toggleConsole()">
+    <div id="con-title">▶ console <span id="con-count">0</span></div>
+    <button id="con-clear" onclick="event.stopPropagation();clearConsole()">清除</button>
+  </div>
+  <div id="con-log"></div>
+</div>
+
+<!-- ZXing: @zxing/browser@0.1.5 UMD — 已含 @zxing/library，無需額外載入 -->
+<script src="https://unpkg.com/@zxing/browser@0.1.5/umd/zxing-browser.min.js"></script>
 
 <script>
-const LIFF_ID = '2009550177-uiMwrJEn';
+/* ===== In-page Console ===== */
+let _lc = 0, _ec = 0, _expanded = false;
 
-let currentData = null;
-let stream = null;
-let scanControls = null;   // decodeFromConstraints 返回的 controls
-let isScanning = false;
-
-// ──────────────── Toast ────────────────
-function toast(msg, duration = 2200) {
-  const el = document.getElementById('toast');
-  el.textContent = msg;
-  el.classList.add('show');
-  setTimeout(() => el.classList.remove('show'), duration);
+function toggleConsole() {
+  _expanded = !_expanded;
+  document.getElementById('console-panel').classList.toggle('expanded', _expanded);
+  const t = document.getElementById('con-title');
+  t.textContent = (_expanded ? '▼' : '▶') + ' console ';
+  t.appendChild(document.getElementById('con-count'));
+  if (_expanded) { const l = document.getElementById('con-log'); l.scrollTop = l.scrollHeight; }
+}
+function clearConsole() {
+  document.getElementById('con-log').innerHTML = '';
+  _lc = 0; _ec = 0; _updCnt();
+}
+function _updCnt() {
+  const el = document.getElementById('con-count');
+  el.textContent = _lc;
+  el.className = _ec > 0 ? 'has-err' : '';
+}
+function _append(type, args) {
+  const msg = args.map(a => {
+    if (a == null) return String(a);
+    if (typeof a === 'object') { try { return JSON.stringify(a); } catch(e){ return String(a); } }
+    return String(a);
+  }).join(' ');
+  const now = new Date();
+  const ts = now.toTimeString().slice(0,8) + '.' + String(now.getMilliseconds()).padStart(3,'0');
+  const d = document.createElement('div');
+  d.className = 'll l' + type;
+  d.innerHTML = '<span class="lt">' + ts + '</span><span class="lm">' + _esc(msg) + '</span>';
+  const log = document.getElementById('con-log');
+  log.appendChild(d);
+  _lc++;
+  if (type === 'error' || type === 'warn') _ec++;
+  _updCnt();
+  if (_expanded) log.scrollTop = log.scrollHeight;
+}
+function _esc(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
-// ──────────────── LIFF ────────────────
+// Hook console
+const _ol = console.log.bind(console), _oi = console.info.bind(console),
+      _ow = console.warn.bind(console), _oe = console.error.bind(console);
+console.log   = (...a) => { _ol(...a);  _append('log',   a); };
+console.info  = (...a) => { _oi(...a);  _append('info',  a); };
+console.warn  = (...a) => { _ow(...a);  _append('warn',  a); };
+console.error = (...a) => { _oe(...a);  _append('error', a); };
+
+function clog(m)  { _append('ok',    [m]); _ol('[✓]', m); }
+function cerr(m)  { _append('error', [m]); _oe('[✗]', m); }
+function cwarn(m) { _append('warn',  [m]); _ow('[!]', m); }
+
+window.addEventListener('error', e => cerr('UNCAUGHT: ' + e.message + ' @' + e.filename + ':' + e.lineno));
+window.addEventListener('unhandledrejection', e => cerr('PROMISE: ' + (e.reason?.message || e.reason)));
+
+/* ===== State ===== */
+const LIFF_ID = '2009550177-uiMwrJEn';
+let currentData = null, mediaStream = null, scanControls = null, isScanning = false;
+
+/* ===== Toast ===== */
+function toast(msg, ms=2500) {
+  const el = document.getElementById('toast');
+  el.textContent = msg; el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), ms);
+}
+
+/* ===== LIFF ===== */
 async function initLiff() {
+  clog('initLiff()');
   try {
     await liff.init({ liffId: LIFF_ID });
-    if (!liff.isLoggedIn()) {
-      liff.login();
-    } else {
-      await enterScannerPage();
-    }
-  } catch (err) {
-    toast('LIFF 初始化失敗: ' + err.message);
-  }
+    clog('liff.init OK — isLoggedIn=' + liff.isLoggedIn());
+    if (!liff.isLoggedIn()) { clog('→ liff.login()'); liff.login(); }
+    else await enterScanner();
+  } catch(e) { cerr('liff.init ERR: ' + e.message); toast('LIFF 失敗: ' + e.message); }
 }
 
-async function enterScannerPage() {
-  const profile = await liff.getProfile().catch(() => null);
-  if (profile) {
-    document.getElementById('user-display').textContent = profile.displayName;
-  }
+async function enterScanner() {
+  try {
+    const p = await liff.getProfile();
+    document.getElementById('user-display').textContent = p.displayName;
+    clog('Profile OK: ' + p.displayName);
+  } catch(e) { cwarn('getProfile: ' + e.message); }
   document.getElementById('page-auth').classList.remove('active');
   document.getElementById('page-scanner').classList.add('active');
+  clog('→ scanner page');
 }
 
-// ──────────────── Camera ────────────────
+/* ===== Camera ===== */
 async function startCamera() {
-  const statusEl = document.getElementById('status-badge');
-  const idleMsg  = document.getElementById('idle-msg');
-  const startBtn = document.getElementById('start-cam-btn');
-  const stopBtn  = document.getElementById('stop-cam-btn');
+  setStatus('loading','啟動中...');
+  clog('startCamera()');
+  cleanupScan();
 
-  setStatus('loading', '啟動中...');
+  // 1. 檢查 ZXingBrowser
+  if (typeof ZXingBrowser === 'undefined') {
+    cerr('ZXingBrowser UNDEFINED — CDN 未載入');
+    setStatus('err','ZXing 未載入');
+    toast('ZXing 解碼庫未載入，請重整'); return;
+  }
+  clog('ZXingBrowser OK, keys: ' + Object.keys(ZXingBrowser).join(' | '));
 
+  // 2. 確認 BrowserMultiFormatReader 存在
+  if (!ZXingBrowser.BrowserMultiFormatReader) {
+    cerr('BrowserMultiFormatReader not found in ZXingBrowser');
+    setStatus('err','Reader 不存在'); return;
+  }
+
+  // 3. 確認 getUserMedia
+  if (!navigator.mediaDevices?.getUserMedia) {
+    cerr('getUserMedia not available');
+    setStatus('err','不支援相機 API');
+    toast('此環境不支援相機（需 HTTPS）'); return;
+  }
+
+  const video = document.getElementById('camera-video');
+
+  // 4. 取得 stream（觸發權限彈窗）
   try {
-    // 先取得 stream（讓 LIFF WebView 觸發權限彈窗）
-    if (stream) stopStream();
-
-    stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } },
+    clog('getUserMedia 請求中...');
+    mediaStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode:'environment', width:{ideal:1280}, height:{ideal:720} },
       audio: false
     });
-
-    const video = document.getElementById('camera-video');
-    video.srcObject = stream;
+    const tracks = mediaStream.getVideoTracks();
+    clog('getUserMedia OK — ' + tracks.length + ' track(s): ' + tracks.map(t=>t.label).join(', '));
+    video.srcObject = mediaStream;
     await video.play();
-
-    setStatus('ready', '對準條碼');
-    idleMsg.style.display = 'none';
-    document.getElementById('vf-frame').classList.add('scanning');
-    startBtn.style.display = 'none';
-    stopBtn.style.display  = 'block';
-    isScanning = true;
-
-    initDecoder(video);
-
-  } catch (err) {
-    console.error('Camera error:', err);
-    let msg = '相機啟動失敗';
-    if (err.name === 'NotAllowedError')  msg = '請允許相機權限';
-    if (err.name === 'NotFoundError')    msg = '找不到相機裝置';
-    if (err.name === 'NotReadableError') msg = '相機被其他 App 佔用';
-    setStatus('error', msg);
-    toast(msg);
+    clog('video.play OK — ' + video.videoWidth + 'x' + video.videoHeight);
+  } catch(e) {
+    cerr('getUserMedia ERR: ' + e.name + ' — ' + e.message);
+    let h = '相機啟動失敗';
+    if (e.name==='NotAllowedError')  h='請允許相機權限';
+    if (e.name==='NotFoundError')    h='找不到相機裝置';
+    if (e.name==='NotReadableError') h='相機被其他 App 佔用';
+    setStatus('err',h); toast(h); return;
   }
-}
 
-function stopCamera() {
-  stopStream();
-  if (scanControls) { try { scanControls.stop(); } catch(e){} scanControls = null; }
-  isScanning = false;
-  document.getElementById('vf-frame').classList.remove('scanning');
-  document.getElementById('idle-msg').style.display = 'flex';
-  document.getElementById('start-cam-btn').style.display = 'block';
-  document.getElementById('stop-cam-btn').style.display  = 'none';
-  setStatus('loading', '已停止');
-}
+  // 5. 啟動解碼器
+  setStatus('loading','啟動解碼器...');
 
-function stopStream() {
-  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
-  const video = document.getElementById('camera-video');
-  video.srcObject = null;
-}
-
-// ──────────────── ZXing Decoder ────────────────
-async function initDecoder(videoEl) {
-  const statusEl = document.getElementById('status-badge');
-
-  // 確認套件已載入
-  if (typeof ZXingBrowser === 'undefined' || typeof ZXing === 'undefined') {
-    setStatus('error', '解碼庫未載入');
-    toast('解碼庫載入失敗，請重新整理頁面');
-    return;
+  // decodeFromConstraints 會自己管 stream，先釋放手動取的
+  if (mediaStream) {
+    mediaStream.getTracks().forEach(t=>t.stop());
+    mediaStream = null;
+    video.srcObject = null;
+    clog('手動 stream 已釋放，交由 ZXing 管理');
   }
 
   const hints = new Map();
-  hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
-  hints.set(ZXing.DecodeHintType.ASSUME_GS1, true);
-  hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [
-    ZXing.BarcodeFormat.CODE_128,
-    ZXing.BarcodeFormat.DATA_MATRIX,
-    ZXing.BarcodeFormat.QR_CODE,
-    ZXing.BarcodeFormat.EAN_13,
-    ZXing.BarcodeFormat.EAN_8,
-  ]);
+  const { BrowserMultiFormatReader, DecodeHintType, BarcodeFormat } = ZXingBrowser;
 
-  const codeReader = new ZXingBrowser.BrowserMultiFormatReader(hints);
+  if (DecodeHintType && BarcodeFormat) {
+    hints.set(DecodeHintType.TRY_HARDER, true);
+    hints.set(DecodeHintType.ASSUME_GS1, true);
+    hints.set(DecodeHintType.POSSIBLE_FORMATS, [
+      BarcodeFormat.CODE_128, BarcodeFormat.DATA_MATRIX,
+      BarcodeFormat.QR_CODE,  BarcodeFormat.EAN_13, BarcodeFormat.EAN_8,
+    ]);
+    clog('DecodeHints set (TRY_HARDER + ASSUME_GS1 + CODE_128/DATA_MATRIX/QR/EAN)');
+  } else {
+    cwarn('DecodeHintType 或 BarcodeFormat 不在 ZXingBrowser，跳過 hints');
+  }
 
-  const constraints = {
-    video: {
-      facingMode: 'environment',
-      width:  { ideal: 1920 },
-      height: { ideal: 1080 },
-    }
-  };
+  const reader = new BrowserMultiFormatReader(hints);
+  clog('BrowserMultiFormatReader 建立 OK');
 
-  try {
-    // decodeFromConstraints: 正確的新版 API
-    // 注意：此 API 會自己管理 stream，不使用我們已建立的 stream
-    // 所以先停掉我們自己的 stream
-    stopStream();
-
-    scanControls = await codeReader.decodeFromConstraints(
-      constraints,
-      videoEl,
-      (result, error) => {
-        if (result && isScanning) {
-          if (navigator.vibrate) navigator.vibrate(80);
-          handleDetection(result.getText());
-        }
-        // error 是 NotFoundException，每幀都會丟，不處理
+  reader.decodeFromConstraints(
+    { video: { facingMode:'environment', width:{ideal:1280}, height:{ideal:720} } },
+    video,
+    (result, err) => {
+      if (result && isScanning) {
+        const txt = result.getText();
+        const fmt = result.getBarcodeFormat?.() ?? '?';
+        clog('DECODED [' + fmt + ']: ' + txt);
+        if (navigator.vibrate) navigator.vibrate(80);
+        handleDetection(txt);
       }
-    );
-
-    setStatus('ready', '對準條碼');
-
-  } catch (err) {
-    console.error('Decoder error:', err);
-    setStatus('error', '解碼器啟動失敗');
-    toast('解碼器啟動失敗: ' + err.message);
-  }
+    }
+  ).then(controls => {
+    scanControls = controls;
+    isScanning = true;
+    setStatus('ok','對準條碼');
+    document.getElementById('vf-frame').classList.add('scanning');
+    document.getElementById('idle-msg').style.display = 'none';
+    document.getElementById('start-btn').style.display = 'none';
+    document.getElementById('stop-btn').style.display  = 'block';
+    clog('掃描器運行中 ✓');
+  }).catch(e => {
+    cerr('decodeFromConstraints ERR: ' + e.name + ' — ' + e.message);
+    setStatus('err','解碼器失敗');
+    toast('解碼器失敗: ' + e.message);
+  });
 }
 
-function setStatus(type, text) {
+function stopCamera() {
+  clog('stopCamera()');
+  cleanupScan();
+  setStatus('loading','已停止');
+  document.getElementById('vf-frame').classList.remove('scanning');
+  document.getElementById('idle-msg').style.display = 'flex';
+  document.getElementById('start-btn').style.display = 'block';
+  document.getElementById('stop-btn').style.display  = 'none';
+}
+
+function cleanupScan() {
+  isScanning = false;
+  if (scanControls) { try { scanControls.stop(); clog('controls.stop OK'); } catch(e){cwarn('controls.stop: '+e.message);} scanControls=null; }
+  if (mediaStream) { mediaStream.getTracks().forEach(t=>t.stop()); mediaStream=null; }
+  document.getElementById('camera-video').srcObject = null;
+}
+
+function setStatus(t, txt) {
   const el = document.getElementById('status-badge');
-  el.className = 'status-badge ' + type;
-  el.textContent = text;
+  el.className = 'badge ' + t;
+  el.textContent = txt;
 }
 
-// ──────────────── GS1 Parse ────────────────
+/* ===== GS1 Parser ===== */
 function parseGS1(raw) {
-  const data = { gtin: null, batch: null, expiry: null };
+  const d = { gtin:null, batch:null, expiry:null };
+  let s = raw.trim().replace(/^\](C1|d2|e0|Q3)/,'');
+  clog('parse input: ' + JSON.stringify(s.slice(0,80)));
 
-  // 去掉 AIM 識別碼前綴（如 ]C1, ]d2 等）
-  let clean = raw.trim().replace(/^\](C1|d2|e0|Q3)/,'');
-
-  // ── 括號格式 (01)xxx(17)xxx(10)xxx ──
-  if (clean.includes('(')) {
-    for (const m of clean.matchAll(/\((\d{2,3})\)([^(]*)/g)) {
-      const ai = m[1], val = m[2].replace(/\x1D/g,'').trim();
-      if (ai === '01' || ai === '02') data.gtin   = val;
-      if (ai === '17')                data.expiry  = formatGS1Date(val);
-      if (ai === '10')                data.batch   = val;
+  if (s.includes('(')) {
+    for (const m of s.matchAll(/\((\d{2,3})\)([^(]*)/g)) {
+      const ai=m[1], v=m[2].replace(/\x1D/g,'').trim();
+      if (ai==='01'||ai==='02') d.gtin=v;
+      if (ai==='17') d.expiry=fmtD(v);
+      if (ai==='10') d.batch=v;
     }
-    return data;
-  }
-
-  // ── 原始連續格式，用狀態機解析 ──
-  let i = 0;
-  while (i < clean.length) {
-    const ai2 = clean.substr(i, 2);
-    const ai3 = clean.substr(i, 3);
-
-    if (ai2 === '01' || ai2 === '02') {
-      data.gtin = clean.substr(i + 2, 14);
-      i += 16;
-    } else if (ai2 === '17') {
-      data.expiry = formatGS1Date(clean.substr(i + 2, 6));
-      i += 8;
-    } else if (ai2 === '11' || ai2 === '12' || ai2 === '13' || ai2 === '15' || ai2 === '16') {
-      i += 8; // 日期型固定長度 6 + AI 2
-    } else if (ai2 === '10') {
-      // AI 10 = 批號，可變長度，以 FNC1(\x1D) 或字串結束為準
-      const rest = clean.substr(i + 2);
-      const fnc1 = rest.indexOf('\x1D');
-      data.batch = fnc1 !== -1 ? rest.substring(0, fnc1) : rest;
-      i = clean.length; // 批號通常在最後
-    } else if (ai2 === '21') {
-      const rest = clean.substr(i + 2);
-      const fnc1 = rest.indexOf('\x1D');
-      const val = fnc1 !== -1 ? rest.substring(0, fnc1) : rest;
-      i += 2 + (fnc1 !== -1 ? fnc1 + 1 : val.length);
-    } else {
-      i++;
+  } else {
+    let i=0;
+    while(i<s.length){
+      const a=s.substr(i,2);
+      if(a==='01'||a==='02'){ d.gtin=s.substr(i+2,14); i+=16; }
+      else if(a==='17'){ d.expiry=fmtD(s.substr(i+2,6)); i+=8; }
+      else if(['11','12','13','15','16'].includes(a)){ i+=8; }
+      else if(a==='10'){
+        const r=s.substr(i+2), fi=r.indexOf('\x1D');
+        d.batch = fi!==-1 ? r.slice(0,fi) : r;
+        i=s.length;
+      } else { i++; }
     }
   }
-  return data;
+  clog('parsed → gtin=' + d.gtin + ' batch=' + d.batch + ' expiry=' + d.expiry);
+  return d;
 }
 
-function formatGS1Date(s) {
-  if (!s || s.length < 6) return s;
-  const yy = s.substr(0,2), mm = s.substr(2,2), dd = s.substr(4,2);
-  const year = parseInt(yy) > 49 ? '19' + yy : '20' + yy;
-  return `${year}-${mm}-${dd}`;
+function fmtD(s) {
+  if(!s||s.length<6) return s;
+  const yy=s.substr(0,2),mm=s.substr(2,2),dd=s.substr(4,2);
+  return (parseInt(yy)>49?'19':'20')+yy+'-'+mm+'-'+dd;
 }
 
-// ──────────────── Detection & UI ────────────────
+/* ===== Detection ===== */
 function handleDetection(raw) {
-  if (!isScanning) return;
-  isScanning = false; // 避免重複觸發
-
-  currentData = parseGS1(raw);
-
-  const vals = [
-    { label: 'GTIN（產品碼）', key: 'gtin' },
-    { label: '批號 Batch/Lot', key: 'batch' },
-    { label: '有效日期 Expiry', key: 'expiry' },
+  if(!isScanning) return;
+  isScanning=false;
+  currentData=parseGS1(raw);
+  renderResult(raw);
+}
+function handleManualInput() {
+  const v=document.getElementById('manual-input').value.trim();
+  if(!v){ toast('請輸入 GS1 字串'); return; }
+  clog('手動輸入: '+v);
+  currentData=parseGS1(v);
+  renderResult(v);
+}
+function renderResult(raw) {
+  const rows=[
+    {l:'GTIN（產品碼）',k:'gtin'},
+    {l:'批號 Batch/Lot',k:'batch'},
+    {l:'有效日期 Expiry',k:'expiry'},
   ];
-
-  document.getElementById('result-list').innerHTML = vals.map(v => `
-    <div class="result-row">
-      <span class="result-label">${v.label}</span>
-      <span class="result-value ${currentData[v.key] ? '' : 'missing'}">
-        ${currentData[v.key] || '— 未識別'}
-      </span>
-    </div>
-  `).join('');
-
-  document.getElementById('raw-debug').textContent = '原始內容: ' + raw;
+  document.getElementById('result-list').innerHTML=rows.map(r=>`
+    <div class="r-row">
+      <span class="r-lbl">${r.l}</span>
+      <span class="r-val ${currentData[r.k]?'':'miss'}">${currentData[r.k]||'— 未識別'}</span>
+    </div>`).join('');
+  document.getElementById('raw-box').textContent='原始: '+raw;
   document.getElementById('result-sheet').classList.add('open');
 }
-
 function closeResult() {
   document.getElementById('result-sheet').classList.remove('open');
-  setTimeout(() => { isScanning = true; }, 300);
+  setTimeout(()=>{ isScanning=true; },300);
 }
 
-// ──────────────── Manual Input ────────────────
-function handleManualInput() {
-  const val = document.getElementById('manual-gs1-input').value.trim();
-  if (!val) { toast('請輸入 GS1 字串'); return; }
-
-  // 從 Auth 頁面直接顯示結果（不需進入 Scanner 頁）
-  handleDetectionFromAuth(val);
-}
-
-function handleDetectionFromAuth(raw) {
-  currentData = parseGS1(raw);
-  const vals = [
-    { label: 'GTIN（產品碼）', key: 'gtin' },
-    { label: '批號 Batch/Lot', key: 'batch' },
-    { label: '有效日期 Expiry', key: 'expiry' },
-  ];
-  document.getElementById('result-list').innerHTML = vals.map(v => `
-    <div class="result-row">
-      <span class="result-label">${v.label}</span>
-      <span class="result-value ${currentData[v.key] ? '' : 'missing'}">
-        ${currentData[v.key] || '— 未識別'}
-      </span>
-    </div>
-  `).join('');
-  document.getElementById('raw-debug').textContent = '原始內容: ' + raw;
-  document.getElementById('result-sheet').classList.add('open');
-}
-
-// ──────────────── Navigation ────────────────
+/* ===== Navigation ===== */
 function backToHome() {
-  stopCamera();
+  clog('backToHome()'); cleanupScan();
   document.getElementById('page-scanner').classList.remove('active');
   document.getElementById('page-auth').classList.add('active');
-  document.getElementById('user-display').textContent = '';
 }
 
-// ──────────────── Send to LINE ────────────────
+/* ===== Send to LINE ===== */
 async function sendToLine() {
-  if (!currentData) return;
-
-  // 若尚未登入 LINE，提示
-  let isLoggedIn = false;
-  try { isLoggedIn = liff.isLoggedIn(); } catch(e) {}
-  if (!isLoggedIn) { toast('請先登入 LINE 帳號'); return; }
-
-  const d = currentData;
-  const flex = {
-    type: 'bubble', size: 'mega',
-    header: {
-      type: 'box', layout: 'vertical',
-      backgroundColor: '#06C755', paddingAll: '16px',
-      contents: [{
-        type: 'text', text: '📦 GS1 掃描結果',
-        color: '#ffffff', weight: 'bold', size: 'sm'
-      }]
-    },
-    body: {
-      type: 'box', layout: 'vertical', spacing: 'md',
-      contents: [
-        makeFlexRow('GTIN（產品碼）', d.gtin   || '—'),
-        makeFlexRow('批號 Batch/Lot', d.batch   || '—'),
-        makeFlexRow('有效日期 Expiry', d.expiry  || '—'),
-      ]
-    }
+  if(!currentData) return;
+  let li=false; try{ li=liff.isLoggedIn(); }catch(e){}
+  if(!li){ toast('請先登入 LINE'); return; }
+  const d=currentData;
+  const flex={ type:'bubble',size:'mega',
+    header:{ type:'box',layout:'vertical',backgroundColor:'#06C755',paddingAll:'16px',
+      contents:[{type:'text',text:'📦 GS1 掃描結果',color:'#fff',weight:'bold',size:'sm'}]},
+    body:{ type:'box',layout:'vertical',spacing:'md',contents:[
+      mkR('GTIN（產品碼）',d.gtin||'—'),
+      mkR('批號 Batch/Lot',d.batch||'—'),
+      mkR('有效日期 Expiry',d.expiry||'—'),
+    ]}
   };
-
   try {
-    await liff.sendMessages([{ type: 'flex', altText: 'GS1 掃描結果', contents: flex }]);
-    liff.closeWindow();
-  } catch (err) {
-    toast('傳送失敗: ' + err.message);
-  }
+    await liff.sendMessages([{type:'flex',altText:'GS1 掃描結果',contents:flex}]);
+    clog('sendMessages OK'); liff.closeWindow();
+  } catch(e){ cerr('sendMessages ERR: '+e.message); toast('傳送失敗: '+e.message); }
 }
+function mkR(l,v){ return {type:'box',layout:'vertical',spacing:'xs',contents:[{type:'text',text:l,color:'#aaa',size:'xs'},{type:'text',text:v,size:'md',weight:'bold',wrap:true}]}; }
 
-function makeFlexRow(label, value) {
-  return {
-    type: 'box', layout: 'vertical', spacing: 'xs',
-    contents: [
-      { type: 'text', text: label, color: '#aaaaaa', size: 'xs' },
-      { type: 'text', text: value, size: 'md', weight: 'bold', wrap: true }
-    ]
-  };
-}
-
-// ──────────────── Auto-login on load ────────────────
+/* ===== Boot ===== */
 window.addEventListener('load', async () => {
+  clog('=== GS1 Scanner v3.0 boot ===');
+  clog('UA: ' + navigator.userAgent.slice(0,120));
+  clog('protocol: ' + location.protocol);
+  clog('ZXingBrowser: ' + (typeof ZXingBrowser));
+  if (typeof ZXingBrowser !== 'undefined') {
+    clog('ZXingBrowser.keys: ' + Object.keys(ZXingBrowser).slice(0,10).join(' | '));
+  } else {
+    cerr('ZXingBrowser UNDEFINED — unpkg 腳本未載入！');
+  }
   try {
     await liff.init({ liffId: LIFF_ID });
-    if (liff.isLoggedIn()) {
-      await enterScannerPage();
-    }
-  } catch (e) {
-    // 靜默失敗，讓用戶手動按登入
-  }
+    clog('auto liff.init OK — isLoggedIn=' + liff.isLoggedIn());
+    if (liff.isLoggedIn()) await enterScanner();
+  } catch(e) { cwarn('auto liff.init: ' + e.message); }
 });
 </script>
 </body>
